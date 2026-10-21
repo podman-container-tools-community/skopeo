@@ -1,0 +1,44 @@
+name: Set up build
+description: >-
+  Expects upstream skopeo checked out at a release tag in the workspace root and this
+  repository in .build/. Hides .build/ from git, so goreleaser sees a clean upstream
+  checkout, and installs Go, syft and goreleaser.
+
+inputs:
+  version:
+    description: Upstream tag being built, e.g. v1.24.1
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Hide .build from git
+      shell: bash
+      run: |
+        printf '/.build/\n/dist/\n' >> .git/info/exclude
+        if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+          git status --short --untracked-files=all
+          echo "::error::upstream checkout is not clean"
+          exit 1
+        fi
+
+    # The newest Go, except where it breaks a release's pinned dependencies: 1.23.x does
+    # not build with Go 1.27 (grpc: undefined: http2.TrailerPrefix).
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: ${{ startsWith(inputs.version, 'v1.23.') && '1.26' || 'stable' }}
+        check-latest: true
+        cache: false
+
+    # Never switch to the toolchain named in go.mod.
+    - name: Pin Go toolchain
+      shell: bash
+      run: echo GOTOOLCHAIN=local >> "$GITHUB_ENV"
+
+    - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+
+    - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+      with:
+        distribution: goreleaser
+        version: v2.18.3
+        install-only: true

@@ -1,0 +1,43 @@
+name: ci
+
+# Builds and tests the newest upstream release of every minor version without
+# publishing anything.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.versions.outputs.versions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Newest release per minor, e.g. ["v1.11.5", ..., "v1.24.1"]
+      - id: versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          versions="$(hack/upstream-releases.sh | tac | sort -uV -t. -k1,2 | jq -Rnc '[inputs]')"
+          echo "versions=${versions}" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: versions
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.versions.outputs.versions) }}
+    name: ${{ matrix.version }}
+    uses: ./.github/workflows/test.yaml
+    with:
+      version: ${{ matrix.version }}
