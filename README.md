@@ -25,6 +25,35 @@ fills that gap with:
 - a multi-arch image based on `gcr.io/distroless/static-debian13`,
 - every maintained upstream minor version (1.11 and newer), not only the newest one.
 
+## Install
+
+### apt (Debian, Ubuntu)
+
+The apt repository follows upstream's latest release:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/podman-container-tools-community/skopeo/main/packaging/apt/skopeo.sources |
+  sudo tee /etc/apt/sources.list.d/skopeo.sources
+sudo apt update
+sudo apt install skopeo
+```
+
+To stay on one release, replace `releases/latest/download` in the URI with
+`releases/download/vX.Y.Z`.
+
+### rpm (Fedora, RHEL, openSUSE)
+
+There is no dnf repository. Download the package from the release and install it:
+
+```sh
+sudo rpm --import https://raw.githubusercontent.com/podman-container-tools-community/skopeo/main/packaging/gpg.asc
+sudo dnf install ./skopeo-1.24.1-1.x86_64.rpm
+```
+
+The deb and rpm packages and the apt repository are signed with the GPG key in
+[`packaging/gpg.asc`](packaging/gpg.asc)
+(`59E1 335F 8162 F5DF FE1D  4DA9 7243 E2C2 DA62 80BC`).
+
 ## Trust model
 
 This repository contains **only build configuration**. Nothing here can change what is
@@ -37,6 +66,9 @@ compiled:
 - Builds run only in GitHub Actions. Binaries and checksums are signed keyless with
   [cosign](https://github.com/sigstore/cosign) via GitHub OIDC, images are signed the
   same way, and every file gets a GitHub build provenance attestation.
+- deb and rpm packages and the apt repository metadata are additionally signed with a
+  GPG key, because apt and rpm cannot verify sigstore signatures. The key is kept in
+  this repository's secrets and used only by the release workflow.
 - Builds are reproducible: with the same Go version, anyone gets bit-for-bit identical
   binaries.
 
@@ -209,5 +241,7 @@ hack/functional-test.sh              functional tests for a built binary
 .github/workflows/ci.yaml            pull requests: test.yaml for newest release per minor
 .github/workflows/sync.yaml          schedule and main: tag new releases, dispatch release.yaml
 .github/workflows/release.yaml       dispatch on a tag: test.yaml, then release, images, signing
+packaging/gpg.asc                    public GPG key for packages and the apt repository
+packaging/apt/skopeo.sources         apt source for the latest release
 renovate.json                        base image and action updates
 ```

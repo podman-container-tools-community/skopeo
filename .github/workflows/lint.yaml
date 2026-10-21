@@ -51,4 +51,5 @@ jobs:
           GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
           IS_LATEST: "false"
           IS_LATEST_MINOR: "false"
+          GPG_KEY_PATH: ""
 

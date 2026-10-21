@@ -7,6 +7,8 @@
 # The binaries are still built from the Go module proxy and verified against
 # sum.golang.org (gomod.proxy), so neither the checkout nor this repository can alter
 # the source.
+# GPG_KEY_PATH names the GPG private key that signs the deb and rpm packages; empty
+# means unsigned.
 # IS_LATEST=true marks upstream's latest release, IS_LATEST_MINOR=true the newest
 # release of its minor version; they decide which floating image tags move.
 version: 2
@@ -86,8 +88,15 @@ nfpms:
         dst: /usr/share/doc/skopeo/LICENSE
       - src: default-policy.json
         dst: /usr/share/doc/skopeo/default-policy.json
+    # Signed with the repository's GPG key (packaging/gpg.asc) when GPG_KEY_PATH is set;
+    # the passphrase comes from NFPM_PASSPHRASE.
     rpm:
       group: Applications/System
+      signature:
+        key_file: "{{ .Env.GPG_KEY_PATH }}"
+    deb:
+      signature:
+        key_file: "{{ .Env.GPG_KEY_PATH }}"
     mtime: "{{ .CommitDate }}"
 
 checksum:
