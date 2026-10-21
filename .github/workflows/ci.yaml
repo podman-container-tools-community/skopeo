@@ -41,3 +41,17 @@ jobs:
     uses: ./.github/workflows/test.yaml
     with:
       version: ${{ matrix.version }}
+
+  # Single job to mark as required: skipped (counts as passed) when everything passed,
+  # fails when any job above failed or was cancelled.
+  fail:
+    if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
+    needs:
+      - versions
+      - test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify checks passed
+        run: |
+          echo "Some checks have failed!"
+          exit 1
