@@ -60,6 +60,36 @@ archives:
     formats: [binary]
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
 
+# Replace the distribution's skopeo package. /etc/containers/policy.json belongs to the
+# distribution's containers-common, so upstream's default is shipped as documentation
+# only.
+nfpms:
+  - id: skopeo
+    ids: [skopeo]
+    package_name: skopeo
+    file_name_template: "{{ .ConventionalFileName }}"
+    formats: [deb, rpm]
+    vendor: podman-container-tools-community
+    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY }}"
+    maintainer: podman-container-tools-community <https://github.com/{{ .Env.GITHUB_REPOSITORY }}/issues>
+    description: |-
+      Community-built static skopeo (upstream: github.com/podman-container-tools/skopeo).
+      Work with remote container images and registries.
+    license: Apache-2.0
+    bindir: /usr/bin
+    provides: [skopeo]
+    conflicts: [skopeo]
+    replaces: [skopeo]
+    recommends: [containers-common]
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/skopeo/LICENSE
+      - src: default-policy.json
+        dst: /usr/share/doc/skopeo/default-policy.json
+    rpm:
+      group: Applications/System
+    mtime: "{{ .CommitDate }}"
+
 checksum:
   name_template: checksums.txt
 

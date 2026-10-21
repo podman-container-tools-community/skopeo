@@ -20,6 +20,8 @@ runners, minimal or non-Linux-distribution hosts) have no package at all. This p
 fills that gap with:
 
 - static binaries for `linux/amd64` and `linux/arm64` (more on request),
+- `.deb` and `.rpm` packages of the same binaries that replace the distribution's
+  `skopeo` package,
 - a multi-arch image based on `gcr.io/distroless/static-debian13`,
 - every maintained upstream minor version (1.11 and newer), not only the newest one.
 
@@ -97,7 +99,7 @@ gh workflow run release.yaml --ref v1.24.1
 
 ## Verify a binary
 
-Download the binary (or archive), `checksums.txt` and `checksums.txt.sigstore.json` from
+Download the binary (or archive, or package), `checksums.txt` and `checksums.txt.sigstore.json` from
 the release. The examples use skopeo `v1.24.1`.
 
 1. **Signature of the checksums**, proving the file came from this repository's workflow:
@@ -170,6 +172,9 @@ distribution package, this means:
 - **No default configuration.** The binary does not install
   `/etc/containers/policy.json`; the archive contains upstream's default as
   `default-policy.json`, and the image ships it at `/etc/containers/policy.json`.
+  The `.deb` and `.rpm` packages recommend the distribution's `containers-common`,
+  which owns `/etc/containers/policy.json`, and ship upstream's default as
+  `/usr/share/doc/skopeo/default-policy.json`.
 - **No commit in `skopeo --version` from 1.21 on.** Up to 1.20 the commit is set at
   link time like upstream does (`-X main.gitCommit`). Newer releases read it from Go's
   VCS build info, which a module-proxy build does not have; `go version -m` shows the
@@ -195,7 +200,7 @@ With the same Go version (see `go version -m`), the binaries are bit-for-bit ide
 This repository is checked out to `.build/` inside an upstream checkout.
 
 ```
-.goreleaser.yaml                     build, archive, image and signing configuration
+.goreleaser.yaml                     build, archive, package, image and signing configuration
 Dockerfile                           image, COPY only (no emulation needed for arm64)
 hack/upstream-releases.sh            upstream releases to build
 hack/functional-test.sh              functional tests for a built binary

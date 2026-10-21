@@ -2,7 +2,7 @@ name: release
 run-name: ${{ github.ref_name }}
 
 # Releases the upstream version named by the tag this workflow runs on: GitHub release
-# with binaries, SBOMs and cosign signature, images on ghcr.io, and build provenance.
+# with binaries, deb/rpm packages, SBOMs and cosign signature, images on ghcr.io, and build provenance.
 # test.yaml (build and functional tests) has to pass first.
 #
 # Started by sync.yaml, or by hand for an existing tag:
