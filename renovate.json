@@ -4,6 +4,23 @@
     "config:recommended",
     "helpers:pinGitHubActionDigests"
   ],
+  "timezone": "Europe/Berlin",
+  "schedule": ["* * * * 5"],
+  "minimumReleaseAge": "7 days",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "minimumReleaseAge": null
+  },
+  "automerge": true,
+  "platformAutomerge": true,
+  "configMigration": true,
+  "packageRules": [
+    {
+      "description": "Major updates need a human review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ],
   "gitIgnoredAuthors": [
     "346494549+container-tools-automation[bot]@users.noreply.github.com"
   ],
