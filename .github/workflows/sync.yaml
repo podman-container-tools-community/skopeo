@@ -1,11 +1,16 @@
 name: sync
 
-# Tags every upstream release (hack/upstream-releases.sh) that is not tagged here yet
-# and starts release.yaml for it. Tags created with GITHUB_TOKEN do not trigger
-# workflows, so the release is dispatched.
+# Tags every upstream release (hack/upstream-releases.sh) that has no published release
+# here yet and starts release.yaml for it. Tags created with GITHUB_TOKEN do not trigger
+# workflows, so the release is dispatched. A tag whose release failed or was never
+# dispatched is picked up again on the next run, unless a release run for it is still
+# queued or running.
 #
 # Does nothing until the repository variable RELEASES_ENABLED is set to true (Settings,
 # Secrets and variables, Actions, Variables), so main can be merged before releasing.
+# At most MAX_RELEASES_PER_RUN (repository variable, default 10) releases are started per
+# run, newest first, so the first run over every upstream release does not flood the
+# runners and quay.io's pull limits; the rest follow with the next runs.
 
 on:
   schedule:
@@ -37,17 +42,41 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          MAX_RELEASES_PER_RUN: ${{ vars.MAX_RELEASES_PER_RUN || 10 }}
         run: |
           set -o pipefail
           # Assigned first: a failure inside the for list would go unnoticed.
-          tags="$(hack/upstream-releases.sh)"
+          tags="$(hack/upstream-releases.sh | tac)"
+          started=0
           for tag in ${tags}; do
-            if gh api "repos/${GH_REPO}/git/ref/tags/${tag}" --silent 2>/dev/null; then
+            # Published (not draft) release: done.
+            if [[ "$(gh release view "${tag}" --repo "${GH_REPO}" --json isDraft --jq .isDraft 2>/dev/null)" == false ]]; then
               continue
             fi
-            echo "Tagging ${tag} at ${GITHUB_SHA}"
-            gh api --method POST "repos/${GH_REPO}/git/refs" \
-              -f "ref=refs/tags/${tag}" \
-              -f "sha=${GITHUB_SHA}"
+            # A release run for the tag is queued or running: leave it alone.
+            active="$(gh run list --repo "${GH_REPO}" --workflow release.yaml --branch "${tag}" \
+              --json status --jq '[.[] | select(.status != "completed")] | length')"
+            if [[ "${active}" != 0 ]]; then
+              continue
+            fi
+            if ((started >= MAX_RELEASES_PER_RUN)); then
+              echo "::notice::${tag} waits for the next run (MAX_RELEASES_PER_RUN=${MAX_RELEASES_PER_RUN})"
+              continue
+            fi
+            started=$((started + 1))
+            # A tag without a published release is referenced by nothing that must stay
+            # stable, so a retry moves it to the current main: release.yaml runs this
+            # repository at the tag, and a fix merged after the failure must reach it.
+            if gh api "repos/${GH_REPO}/git/ref/tags/${tag}" --silent 2>/dev/null; then
+              echo "::notice::${tag} is tagged but has no published release, moving the tag to ${GITHUB_SHA} and starting release.yaml again"
+              gh api --method PATCH "repos/${GH_REPO}/git/refs/tags/${tag}" \
+                -f "sha=${GITHUB_SHA}" \
+                -F force=true
+            else
+              echo "Tagging ${tag} at ${GITHUB_SHA}"
+              gh api --method POST "repos/${GH_REPO}/git/refs" \
+                -f "ref=refs/tags/${tag}" \
+                -f "sha=${GITHUB_SHA}"
+            fi
             gh workflow run release.yaml --ref "${tag}"
           done

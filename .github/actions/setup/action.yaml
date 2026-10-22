@@ -2,16 +2,18 @@ name: Set up build
 description: >-
   Expects upstream skopeo checked out at a release tag in the workspace root and this
   repository in .build/. Hides .build/ from git, so goreleaser sees a clean upstream
-  checkout, and installs Go, zig, syft and goreleaser.
+  checkout, and installs Go, zig, the C sysroot (hack/build-sysroot.sh), syft and
+  goreleaser.
 
 inputs:
   version:
     description: Upstream tag being built, e.g. v1.24.1
     required: true
-  zig-version:
-    description: zig release to install; empty means the one in .zig-version
-    required: false
-    default: ""
+  cache:
+    description: >-
+      Restore the C sysroot from the Actions cache, and save it there on a miss. For pull
+      request CI only: releases always build it from source.
+    default: "false"
 
 runs:
   using: composite
@@ -41,36 +43,64 @@ runs:
       run: echo GOTOOLCHAIN=local >> "$GITHUB_ENV"
 
     # C compiler for both architectures, with musl for static linking. Its version is part
-    # of the binaries (the C objects), so .zig-version is pinned and image rebuilds use the
-    # version their release was built with (release.yaml).
-    - name: Pick zig version
-      id: zig
-      shell: bash
-      env:
-        ZIG_VERSION: ${{ inputs.zig-version }}
-      run: |
-        if [[ -z "${ZIG_VERSION}" ]]; then
-          ZIG_VERSION="$(tr -d '[:space:]' < .build/.zig-version)"
-        fi
-        echo "version=${ZIG_VERSION}" >> "$GITHUB_OUTPUT"
-
+    # of the binaries (the C objects), so it is pinned here; Renovate bumps it.
     - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
       with:
-        version: ${{ steps.zig.outputs.version }}
+        # renovate: datasource=github-releases depName=ziglang/zig
+        version: 0.17.0
         use-cache: false
 
-    # musl 1.2.4 removed the basename() declaration from string.h. Older versions of
-    # containers/storage call it in pkg/unshare/unshare.c without including libgen.h, and
-    # zig's clang refuses implicit declarations, so for those releases libgen.h is
-    # included into every C file. Assembly files get CGO_CFLAGS too, hence the guard.
-    - name: Work around missing libgen.h
+    # C headers and static libraries the build needs, for both architectures. Pull request
+    # CI caches the sysroot (inputs.cache); releases always build it from source. The key
+    # holds everything it depends on: the build script with its version pins,
+    # musl-compat.h, zig, the runner image and the architecture. Binaries linked against
+    # a cached sysroot are byte-identical to ones linked against a fresh build.
+    - name: Sysroot cache key
+      id: sysroot
+      shell: bash
+      env:
+        SCRIPT_HASH: ${{ hashFiles('.build/hack/build-sysroot.sh', '.build/hack/musl-compat.h') }}
+      run: echo "key=sysroot-zig$(zig version)-${ImageOS}-${RUNNER_ARCH}-${SCRIPT_HASH}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore sysroot
+      id: restore
+      if: inputs.cache == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/sysroot
+        key: ${{ steps.sysroot.outputs.key }}
+
+    - name: Build sysroot
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: .build/hack/build-sysroot.sh "${RUNNER_TEMP}/sysroot"
+
+    - name: Save sysroot
+      if: inputs.cache == 'true' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/sysroot
+        key: ${{ steps.sysroot.outputs.key }}
+
+    - name: Set SYSROOT
       shell: bash
       run: | # zizmor: ignore[github-env] only a fixed path goes into GITHUB_ENV
-        if ! grep -q '<libgen.h>' vendor/*/*/storage/pkg/unshare/unshare.c vendor/*/storage/pkg/unshare/unshare.c 2>/dev/null; then
-          echo "::notice::containers/storage does not include libgen.h, including it into every C file"
-          printf '#ifndef __ASSEMBLER__\n#include <libgen.h>\n#endif\n' > "${RUNNER_TEMP}/libgen-compat.h"
-          echo "CGO_COMPAT_CFLAGS=-include ${RUNNER_TEMP}/libgen-compat.h" >> "$GITHUB_ENV"
+        echo "SYSROOT=${RUNNER_TEMP}/sysroot" >> "$GITHUB_ENV"
+
+    # goreleaser's gomod.proxy refuses go.mod replace directives, which a module proxy
+    # build would ignore. Such releases are built from the checkout and its vendor
+    # directory instead.
+    - name: Pick goreleaser configuration
+      shell: bash
+      run: | # zizmor: ignore[github-env] only a fixed path goes into GITHUB_ENV
+        config=.build/.goreleaser.yaml
+        if grep -qE '^replace|=>' go.mod; then
+          echo "::notice::go.mod has replace directives, building from the checkout instead of the Go module proxy"
+          config="${RUNNER_TEMP}/goreleaser.yaml"
+          sed 's/^  proxy: true$/  proxy: false/' .build/.goreleaser.yaml > "${config}"
+          grep -qx '  proxy: false' "${config}"
         fi
+        echo "GORELEASER_CONFIG=${config}" >> "$GITHUB_ENV"
 
     - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
 

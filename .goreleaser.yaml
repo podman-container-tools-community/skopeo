@@ -7,12 +7,11 @@
 # The binaries are still built from the Go module proxy and verified against
 # sum.golang.org (gomod.proxy), so neither the checkout nor this repository can alter
 # the source.
+# SYSROOT holds the C headers and static libraries for both architectures
+# (hack/build-sysroot.sh); zig is the C compiler, so both architectures build on one
+# runner. The image is built separately by hack/build-image.sh.
 # GPG_KEY_PATH names the GPG private key that signs the deb and rpm packages; unset
-# means unsigned.
-# IS_LATEST=true marks upstream's latest release, IS_LATEST_MINOR=true the newest
-# release of its minor version; they decide which floating image tags move.
-# IMAGES_ONLY=true skips the GitHub release and the -immutable image tag, for rebuilding
-# the images of an existing release (see release.yaml).
+# means unsigned. IS_LATEST=true marks upstream's latest release.
 version: 2
 
 project_name: skopeo
@@ -34,9 +33,12 @@ builds:
     binary: skopeo
     env:
       - CGO_ENABLED=1
-      # go-sqlite3 uses the *64 functions such as pread64, which musl 1.2.4 only declares
-      # with _LARGEFILE64_SOURCE. CGO_COMPAT_CFLAGS: see .github/actions/setup.
-      - CGO_CFLAGS=-O2 -g -D_LARGEFILE64_SOURCE {{ envOrDefault "CGO_COMPAT_CFLAGS" "" }}
+      # Setting CGO_CFLAGS replaces Go's default "-O2 -g"; without -O2 zig compiles in
+      # debug mode with the UBSan runtime, whose symbols nothing provides. go-sqlite3 uses
+      # the *64 functions such as pread64, which musl 1.2.4 only declares with
+      # _LARGEFILE64_SOURCE. Before 1.16, hack/musl-compat.h (in the sysroot) declares
+      # basename().
+      - CGO_CFLAGS=-O2 -g -D_LARGEFILE64_SOURCE{{ if and (eq .Major 1) (lt .Minor 16) }} -include {{ .Env.SYSROOT }}/musl-compat.h{{ end }}
       # zig cc cross-compiles both architectures against musl.
       - >-
         {{- if and (eq .Os "linux") (eq .Arch "amd64") }}CC=zig cc -target x86_64-linux-musl{{- end }}
@@ -142,58 +144,15 @@ signs:
       - --yes
     artifacts: checksum
 
-dockers_v2:
-  - id: skopeo
-    ids: [skopeo]
-    images:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/skopeo"
-    # vX.Y.Z-immutable is pushed once, with the release, and skipped by image rebuilds
-    # (IMAGES_ONLY), so its digest never changes; the other tags move with rebuilds.
-    tags:
-      - "{{ .Tag }}"
-      - '{{ if eq .Env.IS_LATEST_MINOR "true" }}v{{ .Major }}.{{ .Minor }}{{ end }}'
-      - '{{ if eq .Env.IS_LATEST "true" }}v{{ .Major }}{{ end }}'
-      - '{{ if eq .Env.IS_LATEST "true" }}latest{{ end }}'
-      - '{{ if ne (envOrDefault "IMAGES_ONLY" "false") "true" }}{{ .Tag }}-immutable{{ end }}'
-    dockerfile: .build/Dockerfile
-    extra_files:
-      - default-policy.json
-      - .build/packaging/image/storage.conf
-    platforms:
-      - linux/amd64
-      - linux/arm64
-    annotations:
-      "org.opencontainers.image.title": "skopeo"
-      "org.opencontainers.image.description": "Community-built static skopeo {{ .Tag }} (upstream: github.com/podman-container-tools/skopeo)"
-      "org.opencontainers.image.version": "{{ .Version }}"
-      "org.opencontainers.image.created": "{{ .CommitDate }}"
-      "org.opencontainers.image.source": "https://github.com/{{ .Env.GITHUB_REPOSITORY }}"
-      "org.opencontainers.image.revision": "{{ .FullCommit }}"
-      "org.opencontainers.image.licenses": "Apache-2.0"
-      "org.opencontainers.image.base.name": "{{ .BaseImage }}"
-      "org.opencontainers.image.base.digest": "{{ .BaseImageDigest }}"
-    labels:
-      "org.opencontainers.image.source": "https://github.com/{{ .Env.GITHUB_REPOSITORY }}"
-    sbom: true
-
-docker_signs:
-  - cmd: cosign
-    artifacts: manifests
-    args:
-      - sign
-      - "${artifact}@${digest}"
-      - --yes
-
 release:
-  disable: '{{ envOrDefault "IMAGES_ONLY" "false" }}'
   # Published by release.yaml once the apt repository files are uploaded.
   draft: true
   replace_existing_draft: true
   # The checkout's origin is upstream; releases go to this repository instead.
   github:
     owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
-    name: "{{ .Env.GITHUB_REPOSITORY_NAME }}"
-  make_latest: '{{ eq .Env.IS_LATEST "true" }}'
+    name: '{{ envOrDefault "GITHUB_REPOSITORY_NAME" .ProjectName }}'
+  make_latest: '{{ eq (envOrDefault "IS_LATEST" "false") "true" }}'
   prerelease: auto
   header: |
     Community-maintained static build of [skopeo {{ .Tag }}](https://github.com/podman-container-tools/skopeo/releases/tag/{{ .Tag }}).

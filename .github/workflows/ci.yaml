@@ -46,6 +46,8 @@ jobs:
     uses: ./.github/workflows/test.yaml
     with:
       version: ${{ matrix.version }}
+      # Pull request caches are scoped to the pull request; release.yaml never uses one.
+      cache: true
 
   # Single job to mark as required: skipped (counts as passed) when everything passed,
   # fails when any job above failed or was cancelled.
