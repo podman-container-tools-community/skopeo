@@ -143,8 +143,8 @@ jobs:
         if: env.IMAGES_ONLY == 'true'
         run: |
           goreleaser release --config .build/.goreleaser.yaml --clean --skip=nfpm
-          grep -E ' skopeo-linux-(amd64|arm64)$' "${RUNNER_TEMP}/release/checksums.txt" |
-            (cd dist && sha256sum --check --strict)
+          binaries=' skopeo-linux-(amd64|arm64)$'
+          diff <(grep -E "${binaries}" "${RUNNER_TEMP}/release/checksums.txt") <(grep -E "${binaries}" dist/checksums.txt)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
