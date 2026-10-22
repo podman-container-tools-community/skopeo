@@ -4,10 +4,13 @@
     "config:recommended",
     "helpers:pinGitHubActionDigests"
   ],
+  "gitIgnoredAuthors": [
+    "346494549+container-tools-automation[bot]@users.noreply.github.com"
+  ],
   "customManagers": [
     {
       "customType": "regex",
-      "description": "bats-core release in hack/install-bats.sh; BATS_SHA256 has to be updated by hand",
+      "description": "bats-core release in hack/install-bats.sh; BATS_SHA256 follows via hack/update-checksums.sh",
       "managerFilePatterns": [
         "/^hack/install-bats\\.sh$/"
       ],
