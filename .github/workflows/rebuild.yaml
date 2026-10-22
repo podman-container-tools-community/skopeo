@@ -6,6 +6,7 @@ name: rebuild
 # By default only the newest release of every minor is rebuilt; the all input rebuilds
 # every release. release.yaml serialises per version through its concurrency group, so
 # dispatching many at once is fine; each rebuild runs test.yaml first.
+# Gated by the repository variable RELEASES_ENABLED like sync.yaml.
 
 on:
   schedule:
@@ -33,6 +34,7 @@ concurrency:
 
 jobs:
   rebuild:
+    if: vars.RELEASES_ENABLED == 'true'
     runs-on: ubuntu-26.04
     permissions:
       contents: read # list releases
