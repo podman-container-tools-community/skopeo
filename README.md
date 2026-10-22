@@ -312,6 +312,13 @@ GITHUB_REPOSITORY_NAME=skopeo IS_LATEST=false IS_LATEST_MINOR=false \
 Needs Go, goreleaser and zig 0.17.0 (`CC` is set in `.goreleaser.yaml`). With the same Go
 and zig versions (see `go version -m`), the binaries are bit-for-bit identical.
 
+The tests take bats-core from [mise](https://mise.jdx.dev), pinned in `.build/mise.lock`:
+
+```sh
+(cd .build && mise install)
+mise exec -C .build -- hack/functional-test.sh ../dist/skopeo_linux_amd64_v1/skopeo localhost:5000
+```
+
 ## Layout
 
 This repository is checked out to `.build/` inside an upstream checkout.
@@ -322,8 +329,7 @@ Dockerfile                           image on Alpine; packages cross-installed w
 hack/upstream-releases.sh            upstream releases to build
 hack/functional-test.sh              run test/functional.bats against a built binary
 hack/image-test.sh                   build the image from a dist directory, run test/image.bats
-hack/install-bats.sh                 install the pinned bats-core release, SHA-256 checked
-hack/update-checksums.sh             recompute the sha256 pins after a version bump
+hack/update-checksums.sh             refresh mise.lock and add the sha256 mise lock leaves out
 test/functional.bats                 functional tests for the binary
 test/image.bats                      tests for the image
 .github/actions/setup/               hide .build/ from Git, pick and install Go, zig, syft, goreleaser
@@ -333,9 +339,10 @@ test/image.bats                      tests for the image
 .github/workflows/rebuild.yaml       weekly and on image changes: dispatch image rebuilds
 .github/workflows/release.yaml       dispatch on a tag: test.yaml, then release, images, signing;
                                      on main with -f images=<tag>: rebuild images only
-.github/workflows/renovate.yaml      Renovate pull requests: commit recomputed sha256 pins
+.github/workflows/renovate.yaml      Renovate pull requests: commit the refreshed mise.lock
 packaging/gpg.asc                    public GPG key for packages and the apt repository
 packaging/apt/skopeo.sources         apt source for the latest release
 packaging/image/storage.conf         containers-storage configuration in the image
 renovate.json                        base image, action and bats-core updates
+mise.toml, mise.lock                 bats-core for the tests, installed with mise
 ```

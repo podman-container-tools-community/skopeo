@@ -1,0 +1,5 @@
+# Tools for the tests in test/. CI installs them with jdx/mise-action from mise.lock;
+# locally, run `mise install` once and the hack/*-test.sh scripts with mise activated or
+# through `mise exec --`. Renovate updates both files.
+[tools]
+bats = "1.14.0"
