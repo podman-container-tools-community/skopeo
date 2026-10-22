@@ -98,7 +98,8 @@ copy:
 works as any user (Kubernetes `runAsUser`, `docker run --user`). The image runs as root
 by default and, like upstream's, has a `skopeo` user (uid 1000) with subordinate IDs,
 `newuidmap`/`newgidmap` and `fuse-overlayfs`, so `containers-storage:` also works inside
-a container (`/etc/containers/storage.conf`).
+a container (`/etc/containers/storage.conf`), as root only: see
+[Limitations](#limitations) for rootless.
 
 Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (BusyBox `sh`, no
 `bash`), `linux/amd64` and `linux/arm64` only, no GPG signing (see
@@ -147,9 +148,13 @@ so there is no version list to maintain here.
    `vX` and `latest` for upstream's latest release. `vX.Y.Z-immutable` is pushed only by
    the release itself and never moves.
 3. Before anything is published, [`test.yaml`](.github/workflows/test.yaml) builds the
-   release and runs [`hack/functional-test.sh`](hack/functional-test.sh) against the
-   amd64 binary: copies between registries, OCI layouts, `dir:` and `containers-storage:`
-   (overlay), plus `inspect` and `sync`. Upstream's own integration tests are not run,
+   release and runs two [bats-core](https://github.com/bats-core/bats-core) suites.
+   [`test/functional.bats`](test/functional.bats) uses the amd64 binary: copies between
+   registries, OCI layouts, `dir:` and `containers-storage:` (overlay), plus `inspect`,
+   `sync` and `list-tags`. [`test/image.bats`](test/image.bats) uses the image built from
+   the release: `skopeo login` as root and as uid 1000, the `skopeo` user and its
+   subordinate ids and `newuidmap`, and `containers-storage:` with fuse-overlayfs as root.
+   Upstream's own integration tests are not run,
    because for older releases they fail on registry content that changed since and on
    test infrastructure that no longer exists, not on the binary.
 4. [`ci.yaml`](.github/workflows/ci.yaml) runs `test.yaml` for the newest release of every
@@ -271,10 +276,12 @@ distribution package, this means:
 - **No btrfs storage driver.** overlay and vfs work for `containers-storage:` from 1.18
   on. **Up to 1.17 only vfs works**: containers/storage registered the overlay driver
   for cgo builds only, so `[overlay@...]` fails with "driver not supported".
-- **No libsubid.** Rootless user namespaces still work: `/etc/subuid` and `/etc/subgid`
-  are read directly and `newuidmap`/`newgidmap` are used. Subordinate ID ranges served
-  by NSS providers (sssd, FreeIPA) are not supported; libsubid loads those with
-  `dlopen`, which is impossible in a static binary.
+- **No rootless `containers-storage:`.** containers/storage enters the user namespace in
+  a cgo constructor (`pkg/unshare`), so as a non-root user skopeo re-executes itself
+  until it fails, on a host and in the image alike. Run `containers-storage:` copies as
+  root; every other transport works as any user.
+- **No libsubid.** Subordinate ID ranges served by NSS providers (sssd, FreeIPA) are not
+  supported; libsubid loads those with `dlopen`, which is impossible in a static binary.
 - **No NSS.** User lookups read `/etc/passwd` only, and name resolution uses
   `/etc/hosts` and DNS only: no LDAP users, mDNS (`.local`) or systemd-resolved
   specific behaviour.
@@ -313,9 +320,13 @@ This repository is checked out to `.build/` inside an upstream checkout.
 .goreleaser.yaml                     build, archive, package, image and signing configuration
 Dockerfile                           image on Alpine; packages cross-installed with apk, no emulation
 hack/upstream-releases.sh            upstream releases to build
-hack/functional-test.sh              functional tests for a built binary
+hack/functional-test.sh              run test/functional.bats against a built binary
+hack/image-test.sh                   build the image from a dist directory, run test/image.bats
+hack/install-bats.sh                 install the pinned bats-core release, SHA-256 checked
+test/functional.bats                 functional tests for the binary
+test/image.bats                      tests for the image
 .github/actions/setup/               hide .build/ from Git, pick and install Go, syft, goreleaser
-.github/workflows/test.yaml          build one release, run functional tests
+.github/workflows/test.yaml          build one release, run functional and image tests
 .github/workflows/ci.yaml            pull requests: test.yaml for newest release per minor
 .github/workflows/sync.yaml          schedule and main: tag new releases, dispatch release.yaml
 .github/workflows/rebuild.yaml       weekly and on image changes: dispatch image rebuilds
@@ -324,5 +335,5 @@ hack/functional-test.sh              functional tests for a built binary
 packaging/gpg.asc                    public GPG key for packages and the apt repository
 packaging/apt/skopeo.sources         apt source for the latest release
 packaging/image/storage.conf         containers-storage configuration in the image
-renovate.json                        base image and action updates
+renovate.json                        base image, action and bats-core updates
 ```
