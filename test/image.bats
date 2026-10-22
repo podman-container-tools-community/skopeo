@@ -47,14 +47,15 @@ sh_in_image() {
 }
 
 @test "skopeo is the entrypoint" {
-  run -0 in_image -- --version
+  run -0 --separate-stderr in_image -- --version
   [[ "${output}" == "skopeo version "* ]]
 }
 
 @test "copy --all from a remote registry to the test registry" {
   in_image -- copy --all --dest-tls-verify=false "${SOURCE_IMAGE}" \
     "docker://${REGISTRY}/alpine:latest"
-  run -0 in_image -- inspect --raw --tls-verify=false "docker://${REGISTRY}/alpine:latest"
+  run -0 --separate-stderr in_image -- inspect --raw --tls-verify=false \
+    "docker://${REGISTRY}/alpine:latest"
   [[ "$(jq '.manifests | length' <<<"${output}")" -gt 1 ]]
 }
 
