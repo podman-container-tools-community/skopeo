@@ -49,8 +49,13 @@ jobs:
           # Empty for schedule and push, which have no inputs.
           ALL: ${{ inputs.all }}
         run: |
+          set -o pipefail
           tags="$(gh release list --repo "${GH_REPO}" --exclude-drafts --exclude-pre-releases \
             --limit 1000 --json tagName --jq '.[].tagName' | sort -V)"
+          if [[ -z "${tags}" ]]; then
+            echo "::error::no releases found"
+            exit 1
+          fi
           if [[ "${ALL:-false}" != "true" ]]; then
             tags="$(tac <<< "${tags}" | sort -uV -t. -k1,2)"
           fi

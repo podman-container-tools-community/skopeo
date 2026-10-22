@@ -28,7 +28,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
           versions="$(hack/upstream-releases.sh | tac | sort -uV -t. -k1,2 | jq -Rnc '[inputs]')"
+          if [[ "${versions}" == "[]" ]]; then
+            echo "::error::no upstream releases found"
+            exit 1
+          fi
           echo "versions=${versions}" >> "$GITHUB_OUTPUT"
 
   test:

@@ -111,6 +111,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
           # Highest release, not GitHub's "latest" flag, which moves to a backport release
           # of an older minor (e.g. v1.22.3 after v1.24.1) unless upstream unsets it.
           latest="$(.build/hack/upstream-releases.sh | tail -1)"
