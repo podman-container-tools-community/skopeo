@@ -102,9 +102,10 @@ a container (`/etc/containers/storage.conf`).
 
 Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (BusyBox `sh`, no
 `bash`), `linux/amd64` and `linux/arm64` only, no GPG signing (see
-[Limitations](#limitations)), and no `-immutable` tags. `vX.Y.Z` tags can be rebuilt on a
-newer base image (see [Release flow](#release-flow)); pin the digest for an image that
-never changes.
+[Limitations](#limitations)), and only `vX.Y.Z-immutable` as immutable tag. Upstream also
+has `vX-immutable` and `vX.Y-immutable`, but those are pushed once and therefore stay at
+the first release of that line. `vX.Y.Z` can be rebuilt on a newer base image (see
+[Release flow](#release-flow)); `vX.Y.Z-immutable` and the digest never change.
 
 ## Trust model
 
@@ -142,7 +143,8 @@ so there is no version list to maintain here.
    on it.
 2. `release.yaml` builds that tag: GitHub release, images on `ghcr.io`, signatures and
    attestations. Image tags: `vX.Y.Z` always, `vX.Y` for the newest release of a minor,
-   `vX` and `latest` for upstream's latest release.
+   `vX` and `latest` for upstream's latest release. `vX.Y.Z-immutable` is pushed only by
+   the release itself and never moves.
 3. Before anything is published, [`test.yaml`](.github/workflows/test.yaml) builds the
    release and runs [`hack/functional-test.sh`](hack/functional-test.sh) against the
    amd64 binary: copies between registries, OCI layouts, `dir:` and `containers-storage:`
@@ -162,8 +164,8 @@ Tags point at the commit that was current when they were created, so a run on a 
 that commit's `Dockerfile`. To rebuild only the images of existing releases with the
 current `Dockerfile`, for example after a base image change, run `release.yaml` on `main`
 with the `images` input. It builds with the Go version of the release, checks that the
-binaries match the released ones, then pushes and signs the image tags; the GitHub
-release, its assets and the packages stay unchanged:
+binaries match the released ones, then pushes and signs the image tags; the
+`-immutable` tag, the GitHub release, its assets and the packages stay unchanged:
 
 ```sh
 gh workflow run release.yaml --ref main -f images=v1.24.1
