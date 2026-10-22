@@ -3,6 +3,9 @@ name: sync
 # Tags every upstream release (hack/upstream-releases.sh) that is not tagged here yet
 # and starts release.yaml for it. Tags created with GITHUB_TOKEN do not trigger
 # workflows, so the release is dispatched.
+#
+# Does nothing until the repository variable RELEASES_ENABLED is set to true (Settings,
+# Secrets and variables, Actions, Variables), so main can be merged before releasing.
 
 on:
   schedule:
@@ -20,6 +23,7 @@ concurrency:
 
 jobs:
   sync:
+    if: vars.RELEASES_ENABLED == 'true'
     runs-on: ubuntu-26.04
     permissions:
       contents: write # create tags
