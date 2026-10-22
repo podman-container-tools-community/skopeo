@@ -32,7 +32,7 @@ fills that gap with:
 - static binaries for `linux/amd64` and `linux/arm64` (more on request),
 - `.deb` and `.rpm` packages of the same binaries that replace the distribution's
   `skopeo` package,
-- a multi-arch image based on `gcr.io/distroless/static-debian13`,
+- a multi-arch image based on Alpine, with a shell for use as a CI job image,
 - every maintained upstream minor version (1.11 and newer), not only the newest one.
 
 ## Install
@@ -124,6 +124,24 @@ A release can also be started by hand for an existing tag:
 
 ```sh
 gh workflow run release.yaml --ref v1.24.1
+```
+
+Tags point at the commit that was current when they were created, so a run on a tag uses
+that commit's `Dockerfile`. To rebuild only the images of existing releases with the
+current `Dockerfile`, for example after a base image change, run `release.yaml` on `main`
+with the `images` input. It builds with the Go version of the release, checks that the
+binaries match the released ones, then pushes and signs the image tags; the GitHub
+release, its assets and the packages stay unchanged:
+
+```sh
+gh workflow run release.yaml --ref main -f images=v1.24.1
+```
+
+For every release:
+
+```sh
+gh release list --repo podman-container-tools-community/skopeo --limit 1000 --json tagName --jq '.[].tagName' |
+  xargs -I{} gh workflow run release.yaml --repo podman-container-tools-community/skopeo --ref main -f images={}
 ```
 
 ## How it works
@@ -256,14 +274,15 @@ This repository is checked out to `.build/` inside an upstream checkout.
 
 ```
 .goreleaser.yaml                     build, archive, package, image and signing configuration
-Dockerfile                           image, COPY only (no emulation needed for arm64)
+Dockerfile                           image on Alpine, COPY only (no emulation needed for arm64)
 hack/upstream-releases.sh            upstream releases to build
 hack/functional-test.sh              functional tests for a built binary
 .github/actions/setup/               hide .build/ from Git, pick and install Go, syft, goreleaser
 .github/workflows/test.yaml          build one release, run functional tests
 .github/workflows/ci.yaml            pull requests: test.yaml for newest release per minor
 .github/workflows/sync.yaml          schedule and main: tag new releases, dispatch release.yaml
-.github/workflows/release.yaml       dispatch on a tag: test.yaml, then release, images, signing
+.github/workflows/release.yaml       dispatch on a tag: test.yaml, then release, images, signing;
+                                     on main with -f images=<tag>: rebuild images only
 packaging/gpg.asc                    public GPG key for packages and the apt repository
 packaging/apt/skopeo.sources         apt source for the latest release
 renovate.json                        base image and action updates

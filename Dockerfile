@@ -1,8 +1,10 @@
 # syntax=docker/dockerfile:1
 
-# distroless/static brings CA certificates, /etc/passwd, /tmp and /var/tmp.
-# Pinned by index digest so image builds stay reproducible; Renovate bumps it.
-FROM gcr.io/distroless/static-debian13:latest@sha256:034df5c1737e8241f6ed6423a12e720ee0f6d6f088609ee172f98f6f2166ef5d
+# Alpine brings a shell, CA certificates, /etc/passwd, /tmp and /var/tmp, so the image
+# also works as a CI job image. skopeo itself is static and needs nothing from it.
+# Nothing runs during the build, so arm64 needs no emulation.
+# Pinned by version and index digest so image builds stay reproducible; Renovate bumps it.
+FROM alpine:3.24.3@sha256:b3413572228e34bd1c9245f5565e6cd127005655e8a7899aef33d8e83255c9e6
 ARG TARGETPLATFORM
 COPY default-policy.json /etc/containers/policy.json
 COPY $TARGETPLATFORM/skopeo /usr/bin/skopeo
