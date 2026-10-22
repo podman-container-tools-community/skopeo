@@ -104,8 +104,9 @@ Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (BusyBox `sh`
 `bash`), `linux/amd64` and `linux/arm64` only, no GPG signing (see
 [Limitations](#limitations)), and only `vX.Y.Z-immutable` as immutable tag. Upstream also
 has `vX-immutable` and `vX.Y-immutable`, but those are pushed once and therefore stay at
-the first release of that line. `vX.Y.Z` is rebuilt weekly on the current base image (see
-[Release flow](#release-flow)); `vX.Y.Z-immutable` and the digest never change.
+the first release of that line. `vX.Y.Z` can be rebuilt on a newer base image, weekly
+for the newest release of every minor (see [Release flow](#release-flow));
+`vX.Y.Z-immutable` and the digest never change.
 
 ## Trust model
 
@@ -171,13 +172,13 @@ binaries match the released ones, then pushes and signs the image tags; the
 gh workflow run release.yaml --ref main -f images=v1.24.1
 ```
 
-[`rebuild.yaml`](.github/workflows/rebuild.yaml) does this for every published release
-every Monday, so `vX.Y.Z` and the floating tags pick up Alpine and package updates. By
-hand, for every release:
+[`rebuild.yaml`](.github/workflows/rebuild.yaml) does this automatically every week for
+the newest release of every minor, and after a merge to `main` that changes the
+`Dockerfile`, `packaging/image` or `.goreleaser.yaml`. Its `all` input rebuilds every
+release:
 
 ```sh
-gh release list --repo podman-container-tools-community/skopeo --limit 1000 --json tagName --jq '.[].tagName' |
-  xargs -I{} gh workflow run release.yaml --repo podman-container-tools-community/skopeo --ref main -f images={}
+gh workflow run rebuild.yaml --repo podman-container-tools-community/skopeo -f all=true
 ```
 
 ## How it works
@@ -317,7 +318,7 @@ hack/functional-test.sh              functional tests for a built binary
 .github/workflows/test.yaml          build one release, run functional tests
 .github/workflows/ci.yaml            pull requests: test.yaml for newest release per minor
 .github/workflows/sync.yaml          schedule and main: tag new releases, dispatch release.yaml
-.github/workflows/rebuild.yaml       weekly: dispatch image rebuilds of every release
+.github/workflows/rebuild.yaml       weekly and on image changes: dispatch image rebuilds
 .github/workflows/release.yaml       dispatch on a tag: test.yaml, then release, images, signing;
                                      on main with -f images=<tag>: rebuild images only
 packaging/gpg.asc                    public GPG key for packages and the apt repository
