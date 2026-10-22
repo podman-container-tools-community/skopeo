@@ -7,7 +7,7 @@
 # The binaries are still built from the Go module proxy and verified against
 # sum.golang.org (gomod.proxy), so neither the checkout nor this repository can alter
 # the source.
-# GPG_KEY_PATH names the GPG private key that signs the deb and rpm packages; empty
+# GPG_KEY_PATH names the GPG private key that signs the deb and rpm packages; unset
 # means unsigned.
 # IS_LATEST=true marks upstream's latest release, IS_LATEST_MINOR=true the newest
 # release of its minor version; they decide which floating image tags move.
@@ -62,9 +62,10 @@ archives:
     formats: [binary]
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
 
-# Replace the distribution's skopeo package. /etc/containers/policy.json belongs to the
-# distribution's containers-common, so upstream's default is shipped as documentation
-# only.
+# Replace the distribution's skopeo package. Epoch 2 sorts above every distribution
+# version (Fedora uses epoch 1, Debian appends +ds1), so upgrades do not switch back.
+# /etc/containers/policy.json belongs to the distribution's containers-common, so
+# upstream's default is shipped as documentation only.
 nfpms:
   - id: skopeo
     ids: [skopeo]
@@ -79,10 +80,7 @@ nfpms:
       Work with remote container images and registries.
     license: Apache-2.0
     bindir: /usr/bin
-    provides: [skopeo]
-    conflicts: [skopeo]
-    replaces: [skopeo]
-    recommends: [containers-common]
+    epoch: "2"
     contents:
       - src: LICENSE
         dst: /usr/share/doc/skopeo/LICENSE
@@ -93,10 +91,18 @@ nfpms:
     rpm:
       group: Applications/System
       signature:
-        key_file: "{{ .Env.GPG_KEY_PATH }}"
+        key_file: '{{ envOrDefault "GPG_KEY_PATH" "" }}'
     deb:
       signature:
-        key_file: "{{ .Env.GPG_KEY_PATH }}"
+        key_file: '{{ envOrDefault "GPG_KEY_PATH" "" }}'
+    # Debian and Ubuntu ship policy.json in golang-github-containers-common.
+    overrides:
+      deb:
+        recommends:
+          - golang-github-containers-common | containers-common
+      rpm:
+        recommends:
+          - containers-common
     mtime: "{{ .CommitDate }}"
 
 checksum:
@@ -154,7 +160,9 @@ docker_signs:
       - --yes
 
 release:
-  draft: false
+  # Published by release.yaml once the apt repository files are uploaded.
+  draft: true
+  replace_existing_draft: true
   # The checkout's origin is upstream; releases go to this repository instead.
   github:
     owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"

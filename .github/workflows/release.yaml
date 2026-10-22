@@ -99,21 +99,41 @@ jobs:
           NFPM_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       # Flat apt repository in the release assets; packaging/apt/skopeo.sources points at
-      # releases/latest/download, which follows upstream's latest release.
+      # releases/latest/download, which follows upstream's latest release. goreleaser
+      # leaves the release as a draft, so it is published only with these files.
       - name: Add apt repository
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_FINGERPRINT: 59E1335F8162F5DFFE1D4DA97243E2C2DA6280BC
         run: |
-          cd dist
+          command -v apt-ftparchive >/dev/null || sudo apt-get install -y --no-install-recommends apt-utils
+          mkdir "${RUNNER_TEMP}/apt"
+          cp dist/*.deb "${RUNNER_TEMP}/apt/"
+          cd "${RUNNER_TEMP}/apt"
           apt-ftparchive packages . > Packages
           xz -k Packages
-          apt-ftparchive release . > Release
-          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --clearsign -o InRelease Release <<< "${GPG_PASSPHRASE}"
-          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --armor --detach-sign -o Release.gpg Release <<< "${GPG_PASSPHRASE}"
+          apt-ftparchive release . > "${RUNNER_TEMP}/Release"
+          mv "${RUNNER_TEMP}/Release" Release
+          sign() {
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user "${GPG_FINGERPRINT}" "$@" <<< "${GPG_PASSPHRASE}"
+          }
+          sign --clearsign -o InRelease Release
+          sign --armor --detach-sign -o Release.gpg Release
           gh release upload "${GITHUB_REF_NAME}" Packages Packages.xz Release InRelease Release.gpg \
             --repo "${GITHUB_REPOSITORY}" --clobber
+
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest="${IS_LATEST}"
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
+
+      - name: Remove GPG key
+        if: always()
+        run: |
+          rm -f "${RUNNER_TEMP}/gpg-private.asc"
+          gpgconf --kill gpg-agent

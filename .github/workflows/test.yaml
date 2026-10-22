@@ -50,7 +50,6 @@ jobs:
           IS_LATEST: "false"
           IS_LATEST_MINOR: "false"
           GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
-          GPG_KEY_PATH: ""
 
       - name: Smoke test
         run: |

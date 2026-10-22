@@ -29,7 +29,8 @@ fills that gap with:
 
 ### apt (Debian, Ubuntu)
 
-The apt repository follows upstream's latest release:
+The apt repository follows upstream's latest release. It needs apt 2.3.10 or newer
+(Debian 12, Ubuntu 22.04 and later) for the inline key in the sources file:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/podman-container-tools-community/skopeo/main/packaging/apt/skopeo.sources |
@@ -41,14 +42,23 @@ sudo apt install skopeo
 To stay on one release, replace `releases/latest/download` in the URI with
 `releases/download/vX.Y.Z`.
 
+The packages use epoch 2, so they stay installed when the distribution ships its own
+skopeo update. To go back to the distribution's package, remove the source and run
+`sudo apt install --allow-downgrades skopeo=<version>`.
+
 ### rpm (Fedora, RHEL, openSUSE)
 
-There is no dnf repository. Download the package from the release and install it:
+There is no dnf repository. Download the package from the release, check its signature
+(`dnf install` does not check local files) and install it:
 
 ```sh
 sudo rpm --import https://raw.githubusercontent.com/podman-container-tools-community/skopeo/main/packaging/gpg.asc
+rpm -K skopeo-1.24.1-1.x86_64.rpm
 sudo dnf install ./skopeo-1.24.1-1.x86_64.rpm
 ```
+
+`rpm -K` has to report `signatures OK`. The packages use epoch 2, so `dnf upgrade` does
+not switch back to the distribution's skopeo.
 
 The deb and rpm packages and the apt repository are signed with the GPG key in
 [`packaging/gpg.asc`](packaging/gpg.asc)
@@ -65,9 +75,11 @@ compiled:
   Dependencies and their hashes are upstream's own `go.sum`.
 - Builds run only in GitHub Actions. Binaries and checksums are signed keyless with
   [cosign](https://github.com/sigstore/cosign) via GitHub OIDC, images are signed the
-  same way, and every file gets a GitHub build provenance attestation.
-- deb and rpm packages and the apt repository metadata are additionally signed with a
-  GPG key, because apt and rpm cannot verify sigstore signatures. The key is kept in
+  same way, and every file in `checksums.txt` gets a GitHub build provenance
+  attestation.
+- The apt repository metadata (`InRelease`) and the rpm packages are additionally signed
+  with a GPG key, because apt and rpm cannot verify sigstore signatures; apt verifies
+  the deb packages through the checksums in the signed `InRelease`. The key is kept in
   this repository's secrets and used only by the release workflow.
 - Builds are reproducible: with the same Go version, anyone gets bit-for-bit identical
   binaries.
@@ -204,8 +216,9 @@ distribution package, this means:
 - **No default configuration.** The binary does not install
   `/etc/containers/policy.json`; the archive contains upstream's default as
   `default-policy.json`, and the image ships it at `/etc/containers/policy.json`.
-  The `.deb` and `.rpm` packages recommend the distribution's `containers-common`,
-  which owns `/etc/containers/policy.json`, and ship upstream's default as
+  The packages recommend the distribution's package that owns
+  `/etc/containers/policy.json` (`golang-github-containers-common` on Debian and
+  Ubuntu, `containers-common` on rpm distributions) and ship upstream's default as
   `/usr/share/doc/skopeo/default-policy.json`.
 - **No commit in `skopeo --version` from 1.21 on.** Up to 1.20 the commit is set at
   link time like upstream does (`-X main.gitCommit`). Newer releases read it from Go's
