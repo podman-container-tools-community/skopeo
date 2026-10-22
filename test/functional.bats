@@ -37,17 +37,17 @@ skopeo_root() {
 }
 
 @test "version" {
-  run -0 skopeo --version
+  run -0 --separate-stderr skopeo --version
   [[ "${output}" == "skopeo version "* ]]
 }
 
 @test "inspect --raw shows a multi-platform index" {
-  run -0 skopeo inspect --raw "${SOURCE_IMAGE}"
+  run -0 --separate-stderr skopeo inspect --raw "${SOURCE_IMAGE}"
   jq -e '.manifests | length > 1' <<<"${output}"
 }
 
 @test "inspect shows the image for this platform" {
-  run -0 skopeo inspect "${SOURCE_IMAGE}"
+  run -0 --separate-stderr skopeo inspect "${SOURCE_IMAGE}"
   jq -e '.Os == "linux"' <<<"${output}"
 }
 
@@ -59,7 +59,8 @@ skopeo_root() {
 @test "copy --all from an OCI layout to a registry" {
   skopeo copy --all --dest-tls-verify=false "oci:${WORK}/oci:alpine" \
     "docker://${REGISTRY}/alpine:latest"
-  run -0 skopeo inspect --raw --tls-verify=false "docker://${REGISTRY}/alpine:latest"
+  run -0 --separate-stderr skopeo inspect --raw --tls-verify=false \
+    "docker://${REGISTRY}/alpine:latest"
   jq -e '.manifests | length > 1' <<<"${output}"
 }
 
@@ -77,7 +78,7 @@ skopeo_root() {
 
 @test "copy from an OCI layout to containers-storage" {
   skopeo_root copy "oci:${WORK}/oci:alpine" "${STORAGE}localhost/alpine:latest"
-  run -0 skopeo_root inspect "${STORAGE}localhost/alpine:latest"
+  run -0 --separate-stderr skopeo_root inspect "${STORAGE}localhost/alpine:latest"
   jq -e '.Layers | length > 0' <<<"${output}"
 }
 
@@ -88,6 +89,7 @@ skopeo_root() {
 }
 
 @test "list-tags shows both pushed tags" {
-  run -0 skopeo list-tags --tls-verify=false "docker://${REGISTRY}/alpine"
+  run -0 --separate-stderr skopeo list-tags --tls-verify=false \
+    "docker://${REGISTRY}/alpine"
   jq -e '.Tags | index("latest") and index("from-storage")' <<<"${output}"
 }
