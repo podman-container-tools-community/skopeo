@@ -126,8 +126,8 @@ compiled:
   with a GPG key, because apt and rpm cannot verify sigstore signatures; apt verifies
   the deb packages through the checksums in the signed `InRelease`. The key is kept in
   this repository's secrets and used only by the release workflow.
-- Builds are reproducible: with the same Go version, anyone gets bit-for-bit identical
-  binaries.
+- Builds are reproducible: with the same Go and zig versions, anyone gets bit-for-bit
+  identical binaries.
 
 ## Which versions are released
 
@@ -169,8 +169,9 @@ gh workflow run release.yaml --ref v1.24.1
 Tags point at the commit that was current when they were created, so a run on a tag uses
 that commit's `Dockerfile`. To rebuild only the images of existing releases with the
 current `Dockerfile`, for example after a base image change, run `release.yaml` on `main`
-with the `images` input. It builds with the Go version of the release, checks that the
-binaries match the released ones, then pushes and signs the image tags; the
+with the `images` input. It builds with the Go and zig versions of the release (zig's
+from [`.zig-version`](.zig-version) at the release's tag), checks that the binaries
+match the released ones, then pushes and signs the image tags; the
 `-immutable` tag, the GitHub release, its assets and the packages stay unchanged:
 
 ```sh
@@ -309,8 +310,9 @@ GITHUB_REPOSITORY_NAME=skopeo IS_LATEST=false IS_LATEST_MINOR=false \
   goreleaser release --config .build/.goreleaser.yaml --clean --skip=publish,sign,docker,sbom
 ```
 
-Needs Go, goreleaser and zig 0.17.0 (`CC` is set in `.goreleaser.yaml`). With the same Go
-and zig versions (see `go version -m`), the binaries are bit-for-bit identical.
+Needs Go, goreleaser and the zig release named in [`.zig-version`](.zig-version) (`CC`
+is set in `.goreleaser.yaml`). With the same Go version (see `go version -m`) and zig
+version, the binaries are bit-for-bit identical.
 
 ## Layout
 
@@ -318,6 +320,7 @@ This repository is checked out to `.build/` inside an upstream checkout.
 
 ```
 .goreleaser.yaml                     build, archive, package, image and signing configuration
+.zig-version                         zig release used as C compiler; Renovate bumps it
 Dockerfile                           image on Alpine; packages cross-installed with apk, no emulation
 hack/upstream-releases.sh            upstream releases to build
 hack/functional-test.sh              run test/functional.bats against a built binary

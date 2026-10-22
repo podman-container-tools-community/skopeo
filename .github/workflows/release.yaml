@@ -76,24 +76,40 @@ jobs:
         with:
           version: ${{ env.VERSION }}
 
-      # Rebuilt images have to contain the released binaries: build them with the Go
-      # version of the release, and compare checksums after the build.
+      # Rebuilt images have to contain the released binaries: build them with the Go and
+      # zig versions of the release, and compare checksums after the build. Go records its
+      # version in the binary; zig's comes from .zig-version at the release's tag, which
+      # points at the commit of this repository the release was built from.
       - name: Download release checksums
         id: release
         if: env.IMAGES_ONLY == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
           gh release download "${VERSION}" --repo "${GITHUB_REPOSITORY}" \
             --pattern checksums.txt --pattern skopeo-linux-amd64 --dir "${RUNNER_TEMP}/release"
           go_version="$(go version "${RUNNER_TEMP}/release/skopeo-linux-amd64" | awk '{print $2}')"
           echo "go-version=${go_version#go}" >> "$GITHUB_OUTPUT"
+          zig_version="$(gh api "repos/${GITHUB_REPOSITORY}/contents/.zig-version?ref=${VERSION}" \
+            --jq .content | base64 -d | tr -d '[:space:]')"
+          if [[ -z "${zig_version}" ]]; then
+            echo "::error::${VERSION} has no .zig-version; it was built without cgo and cannot be rebuilt"
+            exit 1
+          fi
+          echo "zig-version=${zig_version}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: env.IMAGES_ONLY == 'true'
         with:
           go-version: ${{ steps.release.outputs.go-version }}
           cache: false
+
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        if: env.IMAGES_ONLY == 'true'
+        with:
+          version: ${{ steps.release.outputs.zig-version }}
+          use-cache: false
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
