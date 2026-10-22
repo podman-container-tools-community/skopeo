@@ -28,9 +28,8 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Versions pinned in the setup action and hack/build-sysroot.sh: a renovate comment, the version on the next line and optionally its sha256 or commit as digest on the line after",
+      "description": "Versions pinned in hack/build-sysroot.sh: a renovate comment, the version on the next line and optionally its sha256 or commit as digest on the line after",
       "managerFilePatterns": [
-        "/^\\.github/actions/setup/action\\.yaml$/",
         "/^hack/build-sysroot\\.sh$/"
       ],
       "matchStrings": [

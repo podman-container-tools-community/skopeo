@@ -1,5 +1,11 @@
-# Tools for the tests in test/. CI installs them with jdx/mise-action from mise.lock;
-# locally, run `mise install` once and the hack/*-test.sh scripts with mise activated or
-# through `mise exec --`. Renovate updates both files.
+# Tools for the build (goreleaser, zig, syft, cosign) and the tests (bats). CI installs
+# them with jdx/mise-action from mise.lock, which pins the versions and the checksums of
+# the downloads; Renovate updates both files. Locally, run `mise install` once and the
+# hack/ scripts with mise activated or through `mise exec --`. Go is not here: its version
+# depends on the release being built (see .github/actions/setup).
 [tools]
 bats = "1.14.0"
+cosign = "3.1.4"
+goreleaser = "2.18.3"
+syft = "1.55.0"
+zig = "0.17.0"
