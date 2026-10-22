@@ -288,10 +288,10 @@ means:
 - **No default configuration.** The binary does not install
   `/etc/containers/policy.json`; the archive contains upstream's default as
   `default-policy.json`, and the image ships it at `/etc/containers/policy.json`.
-  The packages recommend the distribution's package that owns
+  The packages depend on the distribution's package that owns
   `/etc/containers/policy.json` (`golang-github-containers-common` on Debian and
-  Ubuntu, `containers-common` on rpm distributions) and ship upstream's default as
-  `/usr/share/doc/skopeo/default-policy.json`.
+  Ubuntu, `containers-common` on rpm distributions), because skopeo fails without
+  it, and ship upstream's default as `/usr/share/doc/skopeo/default-policy.json`.
 - **No commit in `skopeo --version` from 1.21 on.** Up to 1.20 the commit is set at
   link time like upstream does (`-X main.gitCommit`). Newer releases read it from Go's
   VCS build info, which a module-proxy build does not have; `go version -m` shows the

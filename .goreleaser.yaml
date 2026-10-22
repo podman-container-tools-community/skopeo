@@ -118,13 +118,16 @@ nfpms:
     deb:
       signature:
         key_file: '{{ envOrDefault "GPG_KEY_PATH" "" }}'
-    # Debian and Ubuntu ship policy.json in golang-github-containers-common.
+    # policy.json is required: without it every skopeo command that reads an image
+    # fails ("open /etc/containers/policy.json: no such file or directory"), and
+    # --no-install-recommends (common in CI images) would skip a Recommends. Debian and
+    # Ubuntu ship it in golang-github-containers-common.
     overrides:
       deb:
-        recommends:
+        depends:
           - golang-github-containers-common | containers-common
       rpm:
-        recommends:
+        depends:
           - containers-common
     mtime: "{{ .CommitDate }}"
 
