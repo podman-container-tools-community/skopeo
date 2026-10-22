@@ -15,6 +15,10 @@ on:
         description: Upstream tag, e.g. v1.24.1
         type: string
         required: true
+      cache:
+        description: Restore and save the C sysroot in the Actions cache (pull request CI only)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,7 +36,6 @@ jobs:
         with:
           repository: podman-container-tools/skopeo
           ref: refs/tags/${{ inputs.version }}
-          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,14 +46,10 @@ jobs:
       - uses: ./.build/.github/actions/setup
         with:
           version: ${{ inputs.version }}
+          cache: ${{ inputs.cache }}
 
-      # dockers_v2 builds and pushes in one step, so a dry run cannot build images.
       - name: Build
-        run: goreleaser release --config .build/.goreleaser.yaml --clean --skip=publish,sign,docker
-        env:
-          IS_LATEST: "false"
-          IS_LATEST_MINOR: "false"
-          GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
+        run: goreleaser release --config "${GORELEASER_CONFIG}" --clean --skip=publish,sign
 
       - name: Smoke test
         run: |
@@ -66,12 +65,13 @@ jobs:
           add_shims_to_path: false
           cache: false
 
+      # Ubuntu 26.04, like 24.04, denies unprivileged user namespaces to unconfined
+      # processes, which the rootless tests need.
+      - name: Allow user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Functional tests
         run: .build/hack/functional-test.sh dist/skopeo_linux_amd64_v1/skopeo localhost:5000
 
-      # Ubuntu 26.04, like 24.04, denies unprivileged user namespaces to unconfined
-      # processes, which includes the rootless test in the privileged container.
       - name: Image tests
-        run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          .build/hack/image-test.sh dist default-policy.json
+        run: .build/hack/image-test.sh dist

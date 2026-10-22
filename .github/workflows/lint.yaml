@@ -36,6 +36,8 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.pull_request.base.ref }}
           VALIDATE_BASH: true
           VALIDATE_BASH_EXEC: true
+          # Sourced helpers without a shebang, like test/helpers.bash, need no executable bit.
+          BASH_EXEC_IGNORE_LIBRARIES: true
           VALIDATE_DOCKERFILE_HADOLINT: true
           VALIDATE_EDITORCONFIG: true
           VALIDATE_GITHUB_ACTIONS: true
@@ -47,8 +49,3 @@ jobs:
           VALIDATE_RENOVATE: true
           VALIDATE_SHELL_SHFMT: true
           VALIDATE_SPELL_CODESPELL: true
-          # .goreleaser.yaml reads these; the release workflows set them.
-          GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
-          IS_LATEST: "false"
-          IS_LATEST_MINOR: "false"
-

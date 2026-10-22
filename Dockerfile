@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
-# Alpine brings a shell, CA certificates, /etc/passwd, /tmp and /var/tmp, so the image
-# also works as a CI job image. skopeo itself is static.
+# The static release binary with its runtime helpers from Alpine, configured like
+# upstream's quay.io/skopeo/stable image. Built by hack/build-image.sh from a context of
+# linux/<arch>/<binary> and packaging/image/.
 # Pinned by version and index digest so image builds stay reproducible; Renovate bumps it
 # (both FROM lines name the same image).
 FROM alpine:3.24.3@sha256:b3413572228e34bd1c9245f5565e6cd127005655e8a7899aef33d8e83255c9e6 AS base
@@ -63,13 +64,10 @@ EOF
 FROM base
 ARG TARGETPLATFORM
 COPY --from=delta /delta/ /
-COPY .build/packaging/image/storage.conf /etc/containers/storage.conf
-COPY default-policy.json /etc/containers/policy.json
+COPY packaging/image/storage.conf packaging/image/policy.json /etc/containers/
 COPY $TARGETPLATFORM/skopeo /usr/bin/skopeo
 # Same default as upstream's image. Without it the credentials file defaults to
 # /run/containers/UID/auth.json, which only root can create, so skopeo login fails for
 # any other user (Kubernetes runAsUser, docker run --user).
 ENV REGISTRY_AUTH_FILE=/tmp/auth.json
-# ghcr.io shows the description from this label, not from the manifest annotation.
-LABEL org.opencontainers.image.description="Community-built static skopeo (upstream: github.com/podman-container-tools/skopeo)"
 ENTRYPOINT ["/usr/bin/skopeo"]
