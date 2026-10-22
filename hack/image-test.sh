@@ -3,8 +3,8 @@
 # context, and runs the checks in test/image.bats against it:
 #   hack/image-test.sh <dist dir> <default-policy.json>
 # Builds every architecture found in <dist dir> (no emulation needed) and tests the
-# host's. Needs Docker with buildx, curl, jq and network access to quay.io, Docker Hub
-# and dl-cdn.alpinelinux.org.
+# host's. Needs Docker with buildx, jq, bats from mise.toml on PATH (mise install) and
+# network access to quay.io, Docker Hub and dl-cdn.alpinelinux.org.
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,8 +39,7 @@ done
 echo "+ building linux/${host}" >&2
 build --load --platform "linux/${host}" -t "${IMAGE}"
 
-"${repo}/hack/install-bats.sh" "${work}/bats"
 status=0
-"${work}/bats/bin/bats" --formatter tap "${repo}/test/image.bats" || status=1
+bats --formatter tap "${repo}/test/image.bats" || status=1
 docker image rm "${IMAGE}" >/dev/null
 exit "${status}"
