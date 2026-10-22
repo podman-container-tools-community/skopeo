@@ -1,0 +1,182 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+#
+# Runs in a checkout of upstream skopeo at a release tag, with this repository in
+# .build/ (see .github/actions/setup):
+#   goreleaser release --config .build/.goreleaser.yaml
+# goreleaser takes the module, go.sum and tag from the upstream checkout.
+# The binaries are still built from the Go module proxy and verified against
+# sum.golang.org (gomod.proxy), so neither the checkout nor this repository can alter
+# the source.
+# GPG_KEY_PATH names the GPG private key that signs the deb and rpm packages; unset
+# means unsigned.
+# IS_LATEST=true marks upstream's latest release, IS_LATEST_MINOR=true the newest
+# release of its minor version; they decide which floating image tags move.
+version: 2
+
+project_name: skopeo
+
+gomod:
+  proxy: true
+  env:
+    - GOPROXY=https://proxy.golang.org
+    - GOSUMDB=sum.golang.org
+    - GOFLAGS=-mod=mod
+
+builds:
+  - id: skopeo
+    main: ./cmd/skopeo
+    binary: skopeo
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    # Same tags upstream uses for DISABLE_CGO=1 builds:
+    # - containers_image_openpgp: pure-Go OpenPGP instead of gpgme (cgo)
+    # - exclude_graphdriver_btrfs: btrfs driver needs libbtrfs headers (cgo)
+    # - exclude_graphdriver_devicemapper: devicemapper needs libdevmapper (cgo);
+    #   upstream stopped setting it in 1.16; it is harmless for newer versions
+    tags:
+      - containers_image_openpgp
+      - exclude_graphdriver_btrfs
+      - exclude_graphdriver_devicemapper
+    ldflags:
+      - -s -w
+      # Upstream's Makefile sets this up to 1.20. From 1.21 on, gitCommit is a function
+      # reading VCS info from the build, which a module proxy build has none of, and the
+      # linker ignores this flag.
+      - -X main.gitCommit={{ .FullCommit }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: skopeo
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: default-policy.json
+  - id: binary
+    formats: [binary]
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+
+# Replace the distribution's skopeo package. Epoch 2 sorts above every distribution
+# version (Fedora uses epoch 1, Debian appends +ds1), so upgrades do not switch back.
+# /etc/containers/policy.json belongs to the distribution's containers-common, so
+# upstream's default is shipped as documentation only.
+nfpms:
+  - id: skopeo
+    ids: [skopeo]
+    package_name: skopeo
+    file_name_template: "{{ .ConventionalFileName }}"
+    formats: [deb, rpm]
+    vendor: podman-container-tools-community
+    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY }}"
+    maintainer: podman-container-tools-community <https://github.com/{{ .Env.GITHUB_REPOSITORY }}/issues>
+    description: |-
+      Community-built static skopeo (upstream: github.com/podman-container-tools/skopeo).
+      Work with remote container images and registries.
+    license: Apache-2.0
+    bindir: /usr/bin
+    epoch: "2"
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/skopeo/LICENSE
+      - src: default-policy.json
+        dst: /usr/share/doc/skopeo/default-policy.json
+    # Signed with the repository's GPG key (packaging/gpg.asc) when GPG_KEY_PATH is set;
+    # the passphrase comes from NFPM_PASSPHRASE.
+    rpm:
+      group: Applications/System
+      signature:
+        key_file: '{{ envOrDefault "GPG_KEY_PATH" "" }}'
+    deb:
+      signature:
+        key_file: '{{ envOrDefault "GPG_KEY_PATH" "" }}'
+    # Debian and Ubuntu ship policy.json in golang-github-containers-common.
+    overrides:
+      deb:
+        recommends:
+          - golang-github-containers-common | containers-common
+      rpm:
+        recommends:
+          - containers-common
+    mtime: "{{ .CommitDate }}"
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - --bundle=${signature}
+      - ${artifact}
+      - --yes
+    artifacts: checksum
+
+dockers_v2:
+  - id: skopeo
+    ids: [skopeo]
+    images:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/skopeo"
+    tags:
+      - "{{ .Tag }}"
+      - '{{ if eq .Env.IS_LATEST_MINOR "true" }}v{{ .Major }}.{{ .Minor }}{{ end }}'
+      - '{{ if eq .Env.IS_LATEST "true" }}v{{ .Major }}{{ end }}'
+      - '{{ if eq .Env.IS_LATEST "true" }}latest{{ end }}'
+    dockerfile: .build/Dockerfile
+    extra_files:
+      - default-policy.json
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    annotations:
+      "org.opencontainers.image.title": "skopeo"
+      "org.opencontainers.image.description": "Community-built static skopeo {{ .Tag }} (upstream: github.com/podman-container-tools/skopeo)"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.created": "{{ .CommitDate }}"
+      "org.opencontainers.image.source": "https://github.com/{{ .Env.GITHUB_REPOSITORY }}"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.licenses": "Apache-2.0"
+      "org.opencontainers.image.base.name": "{{ .BaseImage }}"
+      "org.opencontainers.image.base.digest": "{{ .BaseImageDigest }}"
+    labels:
+      "org.opencontainers.image.source": "https://github.com/{{ .Env.GITHUB_REPOSITORY }}"
+    sbom: true
+
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - --yes
+
+release:
+  # Published by release.yaml once the apt repository files are uploaded.
+  draft: true
+  replace_existing_draft: true
+  # The checkout's origin is upstream; releases go to this repository instead.
+  github:
+    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+    name: "{{ .Env.GITHUB_REPOSITORY_NAME }}"
+  make_latest: '{{ eq .Env.IS_LATEST "true" }}'
+  prerelease: auto
+  header: |
+    Community-maintained static build of [skopeo {{ .Tag }}](https://github.com/podman-container-tools/skopeo/releases/tag/{{ .Tag }}).
+    Not an official release of the skopeo project.
+
+    Built with `CGO_ENABLED=0` and tags `containers_image_openpgp exclude_graphdriver_btrfs exclude_graphdriver_devicemapper`.
+    Known limitation: no GPG signing (`--sign-by`, `standalone-sign`); GPG verification and sigstore work.
+    Sources were fetched from proxy.golang.org and verified against sum.golang.org;
+    check with `go version -m skopeo-linux-amd64`.
+
+changelog:
+  disable: true

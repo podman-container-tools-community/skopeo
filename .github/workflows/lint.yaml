@@ -1,0 +1,54 @@
+name: lint
+
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  super-linter:
+    name: Super Linter
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: "false"
+
+      - name: Lint Code Base
+        uses: super-linter/super-linter/slim@2da136927bd4a73596db63044b504547c62cb854 # v9.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MULTI_STATUS: false
+          LINTER_RULES_PATH: .github/linters
+          GITHUB_ACTIONS_ZIZMOR_CONFIG_FILE: ../../../github/workspace/.github/linters/zizmor.yml
+          ENABLE_GITHUB_ACTIONS_STEP_SUMMARY: true
+          ENABLE_GITHUB_PULL_REQUEST_SUMMARY_COMMENT: false
+          SAVE_SUPER_LINTER_SUMMARY: true
+          VALIDATE_ALL_CODEBASE: false
+          DEFAULT_BRANCH: ${{ github.event.pull_request.base.ref }}
+          VALIDATE_BASH: true
+          VALIDATE_BASH_EXEC: true
+          VALIDATE_DOCKERFILE_HADOLINT: true
+          VALIDATE_EDITORCONFIG: true
+          VALIDATE_GITHUB_ACTIONS: true
+          VALIDATE_GITHUB_ACTIONS_ZIZMOR: true
+          VALIDATE_GITLEAKS: true
+          VALIDATE_GO_RELEASER: true
+          VALIDATE_JSON: true
+          VALIDATE_NATURAL_LANGUAGE: true
+          VALIDATE_RENOVATE: true
+          VALIDATE_SHELL_SHFMT: true
+          VALIDATE_SPELL_CODESPELL: true
+          # .goreleaser.yaml reads these; the release workflows set them.
+          GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
+          IS_LATEST: "false"
+          IS_LATEST_MINOR: "false"
+

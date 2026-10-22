@@ -1,0 +1,9 @@
+rules:
+  cache-poisoning:
+    disable: true
+  secrets-outside-env:
+    disable: true
+  # .build/ is this repository checked out next to upstream's source, so its actions
+  # are referenced by path on purpose.
+  self-repository:
+    disable: true
