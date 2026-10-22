@@ -124,10 +124,10 @@ nfpms:
     # Ubuntu ship it in golang-github-containers-common.
     overrides:
       deb:
-        depends:
+        dependencies:
           - golang-github-containers-common | containers-common
       rpm:
-        depends:
+        dependencies:
           - containers-common
     mtime: "{{ .CommitDate }}"
 
