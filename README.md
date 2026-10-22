@@ -74,6 +74,38 @@ The deb and rpm packages and the apt repository are signed with the GPG key in
 [`packaging/gpg.asc`](packaging/gpg.asc)
 (`59E1 335F 8162 F5DF FE1D  4DA9 7243 E2C2 DA62 80BC`).
 
+## Use the image
+
+The image has skopeo as its entrypoint, like upstream's `quay.io/skopeo/stable`:
+
+```sh
+docker run --rm ghcr.io/podman-container-tools-community/skopeo:v1 inspect docker://quay.io/libpod/alpine:latest
+```
+
+As a GitLab CI job image:
+
+```yaml
+copy:
+  image:
+    name: ghcr.io/podman-container-tools-community/skopeo:v1
+    entrypoint: [""]
+  script:
+    - skopeo login --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - skopeo copy --all docker://quay.io/libpod/alpine:latest "docker://$CI_REGISTRY_IMAGE/alpine:latest"
+```
+
+`skopeo login` writes to `$REGISTRY_AUTH_FILE`, `/tmp/auth.json` in the image, so it
+works as any user (Kubernetes `runAsUser`, `docker run --user`). The image runs as root
+by default and, like upstream's, has a `skopeo` user (uid 1000) with subordinate IDs,
+`newuidmap`/`newgidmap` and `fuse-overlayfs`, so `containers-storage:` also works inside
+a container (`/etc/containers/storage.conf`).
+
+Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (BusyBox `sh`, no
+`bash`), `linux/amd64` and `linux/arm64` only, no GPG signing (see
+[Limitations](#limitations)), and no `-immutable` tags. `vX.Y.Z` tags can be rebuilt on a
+newer base image (see [Release flow](#release-flow)); pin the digest for an image that
+never changes.
+
 ## Trust model
 
 This repository contains **only build configuration**. Nothing here can change what is
@@ -274,7 +306,7 @@ This repository is checked out to `.build/` inside an upstream checkout.
 
 ```
 .goreleaser.yaml                     build, archive, package, image and signing configuration
-Dockerfile                           image on Alpine, COPY only (no emulation needed for arm64)
+Dockerfile                           image on Alpine; packages cross-installed with apk, no emulation
 hack/upstream-releases.sh            upstream releases to build
 hack/functional-test.sh              functional tests for a built binary
 .github/actions/setup/               hide .build/ from Git, pick and install Go, syft, goreleaser
@@ -285,5 +317,6 @@ hack/functional-test.sh              functional tests for a built binary
                                      on main with -f images=<tag>: rebuild images only
 packaging/gpg.asc                    public GPG key for packages and the apt repository
 packaging/apt/skopeo.sources         apt source for the latest release
+packaging/image/storage.conf         containers-storage configuration in the image
 renovate.json                        base image and action updates
 ```

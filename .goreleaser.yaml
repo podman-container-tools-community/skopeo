@@ -136,6 +136,7 @@ dockers_v2:
     dockerfile: .build/Dockerfile
     extra_files:
       - default-policy.json
+      - .build/packaging/image/storage.conf
     platforms:
       - linux/amd64
       - linux/arm64
