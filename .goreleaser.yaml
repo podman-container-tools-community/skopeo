@@ -201,8 +201,8 @@ release:
     Community-maintained static build of [skopeo {{ .Tag }}](https://github.com/podman-container-tools/skopeo/releases/tag/{{ .Tag }}).
     Not an official release of the skopeo project.
 
-    Built with `CGO_ENABLED=0` and tags `containers_image_openpgp exclude_graphdriver_btrfs exclude_graphdriver_devicemapper`.
-    Known limitation: no GPG signing (`--sign-by`, `standalone-sign`); GPG verification and sigstore work.
+    Built with cgo, linked statically against musl (zig), with tags `containers_image_openpgp exclude_graphdriver_btrfs exclude_graphdriver_devicemapper`.
+    Known limitations: no GPG signing (`--sign-by`, `standalone-sign`; GPG verification and sigstore work), no btrfs driver, no libsubid, no NSS.
     Sources were fetched from proxy.golang.org and verified against sum.golang.org;
     check with `go version -m skopeo-linux-amd64`.
 
