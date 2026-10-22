@@ -7,7 +7,7 @@ set -euo pipefail
 
 # renovate: datasource=github-releases depName=bats-core/bats-core
 BATS_VERSION=1.14.0
-# SHA-256 of GitHub's source tarball for that tag; update it with BATS_VERSION.
+# SHA-256 of GitHub's source tarball for that tag; hack/update-checksums.sh updates it.
 BATS_SHA256=bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177
 
 mkdir -p "$1"
