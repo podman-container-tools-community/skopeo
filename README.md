@@ -329,7 +329,6 @@ Dockerfile                           image on Alpine; packages cross-installed w
 hack/upstream-releases.sh            upstream releases to build
 hack/functional-test.sh              run test/functional.bats against a built binary
 hack/image-test.sh                   build the image from a dist directory, run test/image.bats
-hack/update-checksums.sh             refresh mise.lock and add the sha256 mise lock leaves out
 test/functional.bats                 functional tests for the binary
 test/image.bats                      tests for the image
 .github/actions/setup/               hide .build/ from Git, pick and install Go, zig, syft, goreleaser
@@ -339,7 +338,6 @@ test/image.bats                      tests for the image
 .github/workflows/rebuild.yaml       weekly and on image changes: dispatch image rebuilds
 .github/workflows/release.yaml       dispatch on a tag: test.yaml, then release, images, signing;
                                      on main with -f images=<tag>: rebuild images only
-.github/workflows/renovate.yaml      Renovate pull requests: commit the refreshed mise.lock
 packaging/gpg.asc                    public GPG key for packages and the apt repository
 packaging/apt/skopeo.sources         apt source for the latest release
 packaging/image/storage.conf         containers-storage configuration in the image
