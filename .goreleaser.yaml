@@ -37,22 +37,17 @@ builds:
       # go-sqlite3 uses the *64 functions such as pread64, which musl 1.2.4 only declares
       # with _LARGEFILE64_SOURCE. CGO_COMPAT_CFLAGS: see .github/actions/setup.
       - CGO_CFLAGS=-O2 -g -D_LARGEFILE64_SOURCE {{ envOrDefault "CGO_COMPAT_CFLAGS" "" }}
+      # zig cc cross-compiles both architectures against musl.
+      - >-
+        {{- if and (eq .Os "linux") (eq .Arch "amd64") }}CC=zig cc -target x86_64-linux-musl{{- end }}
+        {{- if and (eq .Os "linux") (eq .Arch "arm64") }}CC=zig cc -target aarch64-linux-musl{{- end }}
     goos:
       - linux
     goarch:
       - amd64
       - arm64
-    overrides:
-      - goos: linux
-        goarch: amd64
-        goamd64: v1
-        env:
-          - CC=zig cc -target x86_64-linux-musl
-      - goos: linux
-        goarch: arm64
-        goarm64: v8.0
-        env:
-          - CC=zig cc -target aarch64-linux-musl
+    goamd64: [v1]
+    goarm64: [v8.0]
     flags:
       - -trimpath
     # Everything that needs shared C libraries is left out:
