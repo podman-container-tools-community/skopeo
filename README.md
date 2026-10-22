@@ -99,7 +99,9 @@ works as any user (Kubernetes `runAsUser`, `docker run --user`). The image runs 
 by default and, like upstream's, has a `skopeo` user (uid 1000) with subordinate IDs,
 `newuidmap`/`newgidmap` and `fuse-overlayfs`, so `containers-storage:` also works inside
 a container (`/etc/containers/storage.conf`), as root and as the `skopeo` user (with its
-own `~/.config/containers/storage.conf`).
+own `~/.config/containers/storage.conf`). Any other uid takes `graphroot` from
+`/etc/containers/storage.conf`, which only root can write, as in upstream's image: give it
+its own `storage.conf` via `CONTAINERS_STORAGE_CONF` for rootless storage.
 
 Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (BusyBox `sh`, no
 `bash`), `linux/amd64` and `linux/arm64` only, no GPG signing (see
@@ -279,7 +281,10 @@ means:
   Without `keyPath`, only the legacy `~/.gnupg/pubring.gpg` is read, not `pubring.kbx`.
 - **No Sequoia-PGP** signature backend.
 - **No btrfs or devicemapper storage driver.** overlay and vfs work for
-  `containers-storage:`, as root and rootless.
+  `containers-storage:`, as root and rootless. Rootless needs user namespaces: Ubuntu
+  24.04 and newer restrict them through AppArmor (`unshare(...): Operation not
+  permitted`) unless a profile allows `userns` for the binary or
+  `kernel.apparmor_restrict_unprivileged_userns` is 0.
 - **No libsubid.** Subordinate ID ranges served by NSS providers (sssd, FreeIPA) are not
   supported; libsubid loads those with `dlopen`, which is impossible in a static binary.
 - **No NSS.** musl has none: user lookups read `/etc/passwd` only, and name resolution
