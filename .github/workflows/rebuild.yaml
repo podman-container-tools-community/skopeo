@@ -1,0 +1,65 @@
+name: rebuild
+
+# Rebuilds the images of existing releases with the current Dockerfile (release.yaml
+# with the images input, see README), so they pick up base image and package updates.
+# The GitHub releases, packages and vX.Y.Z-immutable tags are not touched.
+# By default only the newest release of every minor is rebuilt; the all input rebuilds
+# every release. release.yaml serialises per version through its concurrency group, so
+# dispatching many at once is fine; each rebuild runs test.yaml first.
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  # A merged base image bump (Renovate) or image change rebuilds right away.
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - packaging/image/**
+      - .goreleaser.yaml
+  workflow_dispatch:
+    inputs:
+      all:
+        description: Rebuild every release instead of only the newest release of each minor
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read # list releases
+      actions: write # dispatch release.yaml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Dispatch image rebuilds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Empty for schedule and push, which have no inputs.
+          ALL: ${{ inputs.all }}
+        run: |
+          set -o pipefail
+          tags="$(gh release list --repo "${GH_REPO}" --exclude-drafts --exclude-pre-releases \
+            --limit 1000 --json tagName --jq '.[].tagName' | sort -V)"
+          if [[ -z "${tags}" ]]; then
+            echo "::error::no releases found"
+            exit 1
+          fi
+          if [[ "${ALL:-false}" != "true" ]]; then
+            tags="$(tac <<< "${tags}" | sort -uV -t. -k1,2)"
+          fi
+          for tag in ${tags}; do
+            echo "Dispatching image rebuild of ${tag}"
+            gh workflow run release.yaml --ref main -f images="${tag}"
+          done

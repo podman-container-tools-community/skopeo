@@ -34,7 +34,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          for tag in $(hack/upstream-releases.sh); do
+          set -o pipefail
+          # Assigned first: a failure inside the for list would go unnoticed.
+          tags="$(hack/upstream-releases.sh)"
+          for tag in ${tags}; do
             if gh api "repos/${GH_REPO}/git/ref/tags/${tag}" --silent 2>/dev/null; then
               continue
             fi

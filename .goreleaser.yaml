@@ -11,8 +11,8 @@
 # means unsigned.
 # IS_LATEST=true marks upstream's latest release, IS_LATEST_MINOR=true the newest
 # release of its minor version; they decide which floating image tags move.
-# IMAGES_ONLY=true skips the GitHub release, for rebuilding the images of an existing
-# release (see release.yaml).
+# IMAGES_ONLY=true skips the GitHub release and the -immutable image tag, for rebuilding
+# the images of an existing release (see release.yaml).
 version: 2
 
 project_name: skopeo
@@ -128,14 +128,21 @@ dockers_v2:
     ids: [skopeo]
     images:
       - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/skopeo"
+    # vX.Y.Z-immutable is pushed once, with the release, and skipped by image rebuilds
+    # (IMAGES_ONLY), so its digest never changes; the other tags move with rebuilds.
     tags:
       - "{{ .Tag }}"
       - '{{ if eq .Env.IS_LATEST_MINOR "true" }}v{{ .Major }}.{{ .Minor }}{{ end }}'
       - '{{ if eq .Env.IS_LATEST "true" }}v{{ .Major }}{{ end }}'
       - '{{ if eq .Env.IS_LATEST "true" }}latest{{ end }}'
+      - '{{ if ne (envOrDefault "IMAGES_ONLY" "false") "true" }}{{ .Tag }}-immutable{{ end }}'
     dockerfile: .build/Dockerfile
     extra_files:
       - default-policy.json
+      - .build/packaging/image/storage.conf
+    # The Dockerfile picks the storage driver by version.
+    build_args:
+      SKOPEO_VERSION: "{{ .Version }}"
     platforms:
       - linux/amd64
       - linux/arm64

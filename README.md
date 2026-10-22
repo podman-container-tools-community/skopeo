@@ -74,6 +74,40 @@ The deb and rpm packages and the apt repository are signed with the GPG key in
 [`packaging/gpg.asc`](packaging/gpg.asc)
 (`59E1 335F 8162 F5DF FE1D  4DA9 7243 E2C2 DA62 80BC`).
 
+## Use the image
+
+The image has skopeo as its entrypoint, like upstream's `quay.io/skopeo/stable`:
+
+```sh
+docker run --rm ghcr.io/podman-container-tools-community/skopeo:v1 inspect docker://quay.io/libpod/alpine:latest
+```
+
+As a GitLab CI job image:
+
+```yaml
+copy:
+  image:
+    name: ghcr.io/podman-container-tools-community/skopeo:v1
+    entrypoint: [""]
+  script:
+    - skopeo login --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - skopeo copy --all docker://quay.io/libpod/alpine:latest "docker://$CI_REGISTRY_IMAGE/alpine:latest"
+```
+
+`skopeo login` writes to `$REGISTRY_AUTH_FILE`, `/tmp/auth.json` in the image, so it
+works as any user (Kubernetes `runAsUser`, `docker run --user`). The image runs as root
+by default and, like upstream's, has a `skopeo` user (uid 1000) with subordinate IDs,
+`newuidmap`/`newgidmap` and `fuse-overlayfs`, so `containers-storage:` also works inside
+a container (`/etc/containers/storage.conf`).
+
+Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (BusyBox `sh`, no
+`bash`), `linux/amd64` and `linux/arm64` only, no GPG signing (see
+[Limitations](#limitations)), and only `vX.Y.Z-immutable` as immutable tag. Upstream also
+has `vX-immutable` and `vX.Y-immutable`, but those are pushed once and therefore stay at
+the first release of that line. `vX.Y.Z` can be rebuilt on a newer base image, weekly
+for the newest release of every minor (see [Release flow](#release-flow));
+`vX.Y.Z-immutable` and the digest never change.
+
 ## Trust model
 
 This repository contains **only build configuration**. Nothing here can change what is
@@ -110,7 +144,8 @@ so there is no version list to maintain here.
    on it.
 2. `release.yaml` builds that tag: GitHub release, images on `ghcr.io`, signatures and
    attestations. Image tags: `vX.Y.Z` always, `vX.Y` for the newest release of a minor,
-   `vX` and `latest` for upstream's latest release.
+   `vX` and `latest` for upstream's latest release. `vX.Y.Z-immutable` is pushed only by
+   the release itself and never moves.
 3. Before anything is published, [`test.yaml`](.github/workflows/test.yaml) builds the
    release and runs [`hack/functional-test.sh`](hack/functional-test.sh) against the
    amd64 binary: copies between registries, OCI layouts, `dir:` and `containers-storage:`
@@ -130,18 +165,20 @@ Tags point at the commit that was current when they were created, so a run on a 
 that commit's `Dockerfile`. To rebuild only the images of existing releases with the
 current `Dockerfile`, for example after a base image change, run `release.yaml` on `main`
 with the `images` input. It builds with the Go version of the release, checks that the
-binaries match the released ones, then pushes and signs the image tags; the GitHub
-release, its assets and the packages stay unchanged:
+binaries match the released ones, then pushes and signs the image tags; the
+`-immutable` tag, the GitHub release, its assets and the packages stay unchanged:
 
 ```sh
 gh workflow run release.yaml --ref main -f images=v1.24.1
 ```
 
-For every release:
+[`rebuild.yaml`](.github/workflows/rebuild.yaml) does this automatically every week for
+the newest release of every minor, and after a merge to `main` that changes the
+`Dockerfile`, `packaging/image` or `.goreleaser.yaml`. Its `all` input rebuilds every
+release:
 
 ```sh
-gh release list --repo podman-container-tools-community/skopeo --limit 1000 --json tagName --jq '.[].tagName' |
-  xargs -I{} gh workflow run release.yaml --repo podman-container-tools-community/skopeo --ref main -f images={}
+gh workflow run rebuild.yaml --repo podman-container-tools-community/skopeo -f all=true
 ```
 
 ## How it works
@@ -233,7 +270,8 @@ distribution package, this means:
 - **No Sequoia-PGP** signature backend.
 - **No btrfs storage driver.** overlay and vfs work for `containers-storage:` from 1.18
   on. **Up to 1.17 only vfs works**: containers/storage registered the overlay driver
-  for cgo builds only, so `[overlay@...]` fails with "driver not supported".
+  for cgo builds only, so `[overlay@...]` fails with "driver not supported". The images
+  of those releases configure vfs in `/etc/containers/storage.conf` instead of overlay.
 - **No libsubid.** Rootless user namespaces still work: `/etc/subuid` and `/etc/subgid`
   are read directly and `newuidmap`/`newgidmap` are used. Subordinate ID ranges served
   by NSS providers (sssd, FreeIPA) are not supported; libsubid loads those with
@@ -274,16 +312,18 @@ This repository is checked out to `.build/` inside an upstream checkout.
 
 ```
 .goreleaser.yaml                     build, archive, package, image and signing configuration
-Dockerfile                           image on Alpine, COPY only (no emulation needed for arm64)
+Dockerfile                           image on Alpine; packages cross-installed with apk, no emulation
 hack/upstream-releases.sh            upstream releases to build
 hack/functional-test.sh              functional tests for a built binary
 .github/actions/setup/               hide .build/ from Git, pick and install Go, syft, goreleaser
 .github/workflows/test.yaml          build one release, run functional tests
 .github/workflows/ci.yaml            pull requests: test.yaml for newest release per minor
 .github/workflows/sync.yaml          schedule and main: tag new releases, dispatch release.yaml
+.github/workflows/rebuild.yaml       weekly and on image changes: dispatch image rebuilds
 .github/workflows/release.yaml       dispatch on a tag: test.yaml, then release, images, signing;
                                      on main with -f images=<tag>: rebuild images only
 packaging/gpg.asc                    public GPG key for packages and the apt repository
 packaging/apt/skopeo.sources         apt source for the latest release
+packaging/image/storage.conf         containers-storage configuration in the image
 renovate.json                        base image and action updates
 ```
