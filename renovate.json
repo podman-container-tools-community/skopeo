@@ -3,5 +3,18 @@
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "bats-core release in hack/install-bats.sh; BATS_SHA256 has to be updated by hand",
+      "managerFilePatterns": [
+        "/^hack/install-bats\\.sh$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+BATS_VERSION=(?<currentValue>\\S+)"
+      ],
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    }
   ]
 }

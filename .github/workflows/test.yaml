@@ -1,7 +1,8 @@
 name: test
 
-# Builds one upstream release without publishing anything and runs functional tests
-# (hack/functional-test.sh) against the amd64 binary.
+# Builds one upstream release without publishing anything, runs the functional tests
+# (hack/functional-test.sh) against the amd64 binary and builds and tests the image
+# (hack/image-test.sh). Both run bats-core; each test case shows up in the log.
 #
 # Upstream's integration tests are not run: for older releases they depend on registry
 # content that has changed since (registry.k8s.io tag lists), an OpenShift 1.5 cluster
@@ -59,3 +60,6 @@ jobs:
 
       - name: Functional tests
         run: .build/hack/functional-test.sh dist/skopeo_linux_amd64_v1/skopeo localhost:5000
+
+      - name: Image tests
+        run: .build/hack/image-test.sh dist default-policy.json
