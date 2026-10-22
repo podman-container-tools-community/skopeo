@@ -1,4 +1,14 @@
+[![CI](https://github.com/podman-container-tools-community/skopeo/actions/workflows/ci.yaml/badge.svg)](https://github.com/podman-container-tools-community/skopeo/actions/workflows/ci.yaml)
+[![Release](https://github.com/podman-container-tools-community/skopeo/actions/workflows/release.yaml/badge.svg)](https://github.com/podman-container-tools-community/skopeo/actions/workflows/release.yaml)
+[![GitHub license](https://img.shields.io/github/license/podman-container-tools-community/skopeo)](https://github.com/podman-container-tools-community/skopeo/blob/main/LICENSE)
+[![Current Release](https://img.shields.io/github/release/podman-container-tools-community/skopeo.svg?logo=github)](https://github.com/podman-container-tools-community/skopeo/releases/latest)
+[![GitHub Repo stars](https://img.shields.io/github/stars/podman-container-tools-community/skopeo?style=flat&logo=github)](https://github.com/podman-container-tools-community/skopeo/stargazers)
+[![GitHub all releases](https://img.shields.io/github/downloads/podman-container-tools-community/skopeo/total?logo=github)](https://github.com/podman-container-tools-community/skopeo/releases/latest)
+[![ghcr.io Pulls](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fipitio.github.io%2Fbackage%2Fpodman-container-tools-community%2Fskopeo%2Fskopeo.json&query=%24.downloads&logo=github&label=ghcr.io%20pulls)](https://github.com/podman-container-tools-community/skopeo/pkgs/container/skopeo)
+
 # skopeo (community build)
+
+⭐ Don't forget to star this repository! ⭐
 
 Community-maintained, static binaries and container images of
 [skopeo](https://github.com/podman-container-tools/skopeo), part of
