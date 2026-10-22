@@ -1,0 +1,4 @@
+# Runner labels newer than the actionlint release bundled with super-linter.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
