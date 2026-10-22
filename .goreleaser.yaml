@@ -11,6 +11,8 @@
 # means unsigned.
 # IS_LATEST=true marks upstream's latest release, IS_LATEST_MINOR=true the newest
 # release of its minor version; they decide which floating image tags move.
+# IMAGES_ONLY=true skips the GitHub release, for rebuilding the images of an existing
+# release (see release.yaml).
 version: 2
 
 project_name: skopeo
@@ -160,6 +162,7 @@ docker_signs:
       - --yes
 
 release:
+  disable: '{{ envOrDefault "IMAGES_ONLY" "false" }}'
   # Published by release.yaml once the apt repository files are uploaded.
   draft: true
   replace_existing_draft: true
