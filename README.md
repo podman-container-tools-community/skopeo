@@ -151,10 +151,12 @@ so there is no version list to maintain here.
    `vX` and `latest` for upstream's latest release. `vX.Y.Z-immutable` is pushed only by
    the release itself and never moves.
 3. Before anything is published, [`test.yaml`](.github/workflows/test.yaml) builds the
-   release and runs two [bats-core](https://github.com/bats-core/bats-core) suites.
+   release and runs three [bats-core](https://github.com/bats-core/bats-core) suites.
    [`test/functional.bats`](test/functional.bats) uses the amd64 binary: copies between
    registries, OCI layouts, `dir:` and `containers-storage:` (overlay), plus `inspect`,
-   `sync` and `list-tags`. [`test/image.bats`](test/image.bats) uses the image built from
+   `sync` and `list-tags`. [`test/signing.bats`](test/signing.bats) signs with a sigstore
+   key and verifies sigstore and GPG (simple signing) signatures through a `policy.json`,
+   and checks that `--sign-by` fails with a clear error. [`test/image.bats`](test/image.bats) uses the image built from
    the release: `skopeo login` as root and as uid 1000, the `skopeo` user and its
    subordinate IDs and `newuidmap`, and `containers-storage:` with fuse-overlayfs as root
    and rootless. Upstream's own integration tests are not run, because for older releases
