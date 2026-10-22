@@ -61,5 +61,9 @@ jobs:
       - name: Functional tests
         run: .build/hack/functional-test.sh dist/skopeo_linux_amd64_v1/skopeo localhost:5000
 
+      # Ubuntu 26.04, like 24.04, denies unprivileged user namespaces to unconfined
+      # processes, which includes the rootless test in the privileged container.
       - name: Image tests
-        run: .build/hack/image-test.sh dist default-policy.json
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          .build/hack/image-test.sh dist default-policy.json
