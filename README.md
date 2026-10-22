@@ -270,7 +270,8 @@ distribution package, this means:
 - **No Sequoia-PGP** signature backend.
 - **No btrfs storage driver.** overlay and vfs work for `containers-storage:` from 1.18
   on. **Up to 1.17 only vfs works**: containers/storage registered the overlay driver
-  for cgo builds only, so `[overlay@...]` fails with "driver not supported".
+  for cgo builds only, so `[overlay@...]` fails with "driver not supported". The images
+  of those releases configure vfs in `/etc/containers/storage.conf` instead of overlay.
 - **No libsubid.** Rootless user namespaces still work: `/etc/subuid` and `/etc/subgid`
   are read directly and `newuidmap`/`newgidmap` are used. Subordinate ID ranges served
   by NSS providers (sssd, FreeIPA) are not supported; libsubid loads those with
