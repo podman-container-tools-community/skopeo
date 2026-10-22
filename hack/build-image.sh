@@ -76,10 +76,15 @@ case "${mode}" in
   tags=("${VERSION}")
   # The -immutable tag is pushed once: a retried release must not move it.
   if [[ "${IMMUTABLE:-false}" == true ]]; then
-    if docker buildx imagetools inspect "${target}:${VERSION}-immutable" >/dev/null 2>&1; then
+    if existing="$(docker buildx imagetools inspect "${target}:${VERSION}-immutable" 2>&1)"; then
       echo "::notice::${target}:${VERSION}-immutable exists already and is kept" >&2
-    else
+    elif grep -qiE 'not found|MANIFEST_UNKNOWN|NAME_UNKNOWN' <<<"${existing}"; then
       tags+=("${VERSION}-immutable")
+    else
+      # Any other error (registry, login, network) must not end in a second push.
+      echo "${existing}" >&2
+      echo "::error::cannot tell whether ${target}:${VERSION}-immutable exists" >&2
+      exit 1
     fi
   fi
   [[ "${IS_LATEST_MINOR:-false}" != true ]] || tags+=("${VERSION%.*}")

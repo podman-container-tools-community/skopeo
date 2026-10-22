@@ -64,8 +64,14 @@ jobs:
               continue
             fi
             started=$((started + 1))
+            # A tag without a published release is referenced by nothing that must stay
+            # stable, so a retry moves it to the current main: release.yaml runs this
+            # repository at the tag, and a fix merged after the failure must reach it.
             if gh api "repos/${GH_REPO}/git/ref/tags/${tag}" --silent 2>/dev/null; then
-              echo "::notice::${tag} is tagged but has no published release, starting release.yaml again"
+              echo "::notice::${tag} is tagged but has no published release, moving the tag to ${GITHUB_SHA} and starting release.yaml again"
+              gh api --method PATCH "repos/${GH_REPO}/git/refs/tags/${tag}" \
+                -f "sha=${GITHUB_SHA}" \
+                -F force=true
             else
               echo "Tagging ${tag} at ${GITHUB_SHA}"
               gh api --method POST "repos/${GH_REPO}/git/refs" \

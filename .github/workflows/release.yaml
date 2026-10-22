@@ -138,14 +138,16 @@ jobs:
           gh release upload "${VERSION}" Packages Packages.xz Release InRelease Release.gpg \
             --repo "${GITHUB_REPOSITORY}" --clobber
 
+      # Before the release is published: a failed attestation leaves a draft, which the
+      # next sync.yaml run replaces.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${VERSION}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest="${IS_LATEST}"
-
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-checksums: dist/checksums.txt
 
       - name: Remove GPG key
         if: always()

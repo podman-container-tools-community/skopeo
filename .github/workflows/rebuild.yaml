@@ -3,8 +3,9 @@ name: rebuild
 # Rebuilds the images of existing releases with the current Dockerfile, so they pick up
 # base image and package updates. The binaries come from the GitHub release's archives,
 # checked against its cosign-signed checksums.txt, so the images contain the released
-# binaries by construction and no toolchain is needed. The GitHub releases, packages and
-# vX.Y.Z-immutable tags are not touched.
+# binaries by construction and no toolchain is needed. Every image passes test/image.bats
+# before it is pushed. The GitHub releases, packages and vX.Y.Z-immutable tags are not
+# touched.
 # By default only the newest release of every minor is rebuilt; the all input rebuilds
 # every release, the version input one release. Gated by the repository variable
 # RELEASES_ENABLED like sync.yaml.
@@ -108,7 +109,7 @@ jobs:
           gh release download "${VERSION}" --repo "${GITHUB_REPOSITORY}" --dir release \
             --pattern 'checksums.txt*' --pattern '*_linux_amd64.tar.gz' --pattern '*_linux_arm64.tar.gz'
           cosign verify-blob release/checksums.txt --bundle release/checksums.txt.sigstore.json \
-            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yaml@" \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yaml@refs/tags/${VERSION}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com
           (cd release && sha256sum --check --ignore-missing --strict checksums.txt)
           commit="$(gh api "repos/podman-container-tools/skopeo/commits/${VERSION}")"
@@ -129,6 +130,21 @@ jobs:
             echo "IS_LATEST=$([[ "${VERSION}" == "${latest}" ]] && echo true || echo false)"
             echo "IS_LATEST_MINOR=$([[ "${VERSION}" == "${latest_minor}" ]] && echo true || echo false)"
           } >> "$GITHUB_ENV"
+
+      # bats from mise.toml, checked against mise.lock, for the image tests.
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        with:
+          add_shims_to_path: false
+          cache: false
+
+      # Ubuntu 26.04, like 24.04, denies unprivileged user namespaces to unconfined
+      # processes, which the rootless tests need.
+      - name: Allow user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      # The same build as below, loaded instead of pushed; the push is a cache hit.
+      - name: Test the rebuilt image
+        run: hack/image-test.sh release
 
       - name: Rebuild and push images
         run: hack/build-image.sh --push release "ghcr.io/${GITHUB_REPOSITORY}"

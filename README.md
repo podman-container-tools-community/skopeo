@@ -154,7 +154,9 @@ so there is no version list to maintain here.
    Image tags: `vX.Y.Z` and `vX.Y.Z-immutable` always, `vX.Y` for the newest release of
    a minor, `vX` and `latest` for the newest upstream release by version (not upstream's
    GitHub "latest" flag, which a backport release of an older minor can take).
-   `vX.Y.Z-immutable` is pushed only by the release itself and never moves.
+   `vX.Y.Z-immutable` is pushed only by the release itself and never moves; a release
+   run that fails after the image step and is retried keeps the first run's tag (same
+   binaries, since the build is reproducible, but that run's signature and SBOM).
 3. Before anything is published, [`test.yaml`](.github/workflows/test.yaml) builds the
    release and runs three [bats-core](https://github.com/bats-core/bats-core) suites.
    [`test/functional.bats`](test/functional.bats) uses the amd64 binary: copies between
@@ -182,8 +184,9 @@ release of every minor, after a merge to `main` that changes the `Dockerfile`,
 `packaging/image` or `hack/build-image.sh`, and on demand (`-f all=true` for every
 release, `-f version=v1.24.1` for one). It downloads the release's archives, checks them
 against the cosign-signed `checksums.txt`, builds the image with the current `Dockerfile`
-through [`hack/build-image.sh`](hack/build-image.sh) and pushes and signs all tags of
-that release except `v1.24.1-immutable`, which keeps the digest of the original release.
+through [`hack/build-image.sh`](hack/build-image.sh), runs `test/image.bats` against it and
+then pushes and signs all tags of that release except `v1.24.1-immutable`, which keeps the
+digest of the original release.
 No toolchain is involved, so the images always contain exactly the released binaries.
 Like `sync.yaml`, it only runs once `RELEASES_ENABLED` is `true`.
 
