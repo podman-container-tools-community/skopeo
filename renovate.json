@@ -20,8 +20,5 @@
       "matchUpdateTypes": ["major"],
       "automerge": false
     }
-  ],
-  "gitIgnoredAuthors": [
-    "346494549+container-tools-automation[bot]@users.noreply.github.com"
   ]
 }
