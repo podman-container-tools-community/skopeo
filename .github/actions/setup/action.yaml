@@ -8,6 +8,10 @@ inputs:
   version:
     description: Upstream tag being built, e.g. v1.24.1
     required: true
+  zig-version:
+    description: zig release to install; empty means the one in .zig-version
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -36,10 +40,23 @@ runs:
       shell: bash
       run: echo GOTOOLCHAIN=local >> "$GITHUB_ENV"
 
-    # C compiler for both architectures, with musl for static linking.
+    # C compiler for both architectures, with musl for static linking. Its version is part
+    # of the binaries (the C objects), so .zig-version is pinned and image rebuilds use the
+    # version their release was built with (release.yaml).
+    - name: Pick zig version
+      id: zig
+      shell: bash
+      env:
+        ZIG_VERSION: ${{ inputs.zig-version }}
+      run: |
+        if [[ -z "${ZIG_VERSION}" ]]; then
+          ZIG_VERSION="$(tr -d '[:space:]' < .build/.zig-version)"
+        fi
+        echo "version=${ZIG_VERSION}" >> "$GITHUB_OUTPUT"
+
     - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
       with:
-        version: 0.17.0
+        version: ${{ steps.zig.outputs.version }}
         use-cache: false
 
     # musl 1.2.4 removed the basename() declaration from string.h. Older versions of

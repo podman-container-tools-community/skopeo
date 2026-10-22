@@ -20,5 +20,15 @@
       "matchUpdateTypes": ["major"],
       "automerge": false
     }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "zig release in .zig-version; image rebuilds keep using the version of their release",
+      "managerFilePatterns": ["/^\\.zig-version$/"],
+      "matchStrings": ["^(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "ziglang/zig"
+    }
   ]
 }

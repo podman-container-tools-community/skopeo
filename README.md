@@ -99,7 +99,9 @@ works as any user (Kubernetes `runAsUser`, `docker run --user`). The image runs 
 by default and, like upstream's, has a `skopeo` user (uid 1000) with subordinate IDs,
 `newuidmap`/`newgidmap` and `fuse-overlayfs`, so `containers-storage:` also works inside
 a container (`/etc/containers/storage.conf`), as root and as the `skopeo` user (with its
-own `~/.config/containers/storage.conf`).
+own `~/.config/containers/storage.conf`). Any other uid takes `graphroot` from
+`/etc/containers/storage.conf`, which only root can write, as in upstream's image: give it
+its own `storage.conf` via `CONTAINERS_STORAGE_CONF` for rootless storage.
 
 Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (BusyBox `sh`, no
 `bash`), `linux/amd64` and `linux/arm64` only, no GPG signing (see
@@ -126,8 +128,8 @@ compiled:
   with a GPG key, because apt and rpm cannot verify sigstore signatures; apt verifies
   the deb packages through the checksums in the signed `InRelease`. The key is kept in
   this repository's secrets and used only by the release workflow.
-- Builds are reproducible: with the same Go version, anyone gets bit-for-bit identical
-  binaries.
+- Builds are reproducible: with the same Go and zig versions, anyone gets bit-for-bit
+  identical binaries.
 
 ## Which versions are released
 
@@ -169,8 +171,9 @@ gh workflow run release.yaml --ref v1.24.1
 Tags point at the commit that was current when they were created, so a run on a tag uses
 that commit's `Dockerfile`. To rebuild only the images of existing releases with the
 current `Dockerfile`, for example after a base image change, run `release.yaml` on `main`
-with the `images` input. It builds with the Go version of the release, checks that the
-binaries match the released ones, then pushes and signs the image tags; the
+with the `images` input. It builds with the Go and zig versions of the release (zig's
+from [`.zig-version`](.zig-version) at the release's tag), checks that the binaries
+match the released ones, then pushes and signs the image tags; the
 `-immutable` tag, the GitHub release, its assets and the packages stay unchanged:
 
 ```sh
@@ -278,7 +281,10 @@ means:
   Without `keyPath`, only the legacy `~/.gnupg/pubring.gpg` is read, not `pubring.kbx`.
 - **No Sequoia-PGP** signature backend.
 - **No btrfs or devicemapper storage driver.** overlay and vfs work for
-  `containers-storage:`, as root and rootless.
+  `containers-storage:`, as root and rootless. Rootless needs user namespaces: Ubuntu
+  24.04 and newer restrict them through AppArmor (`unshare(...): Operation not
+  permitted`) unless a profile allows `userns` for the binary or
+  `kernel.apparmor_restrict_unprivileged_userns` is 0.
 - **No libsubid.** Subordinate ID ranges served by NSS providers (sssd, FreeIPA) are not
   supported; libsubid loads those with `dlopen`, which is impossible in a static binary.
 - **No NSS.** musl has none: user lookups read `/etc/passwd` only, and name resolution
@@ -287,10 +293,10 @@ means:
 - **No default configuration.** The binary does not install
   `/etc/containers/policy.json`; the archive contains upstream's default as
   `default-policy.json`, and the image ships it at `/etc/containers/policy.json`.
-  The packages recommend the distribution's package that owns
+  The packages depend on the distribution's package that owns
   `/etc/containers/policy.json` (`golang-github-containers-common` on Debian and
-  Ubuntu, `containers-common` on rpm distributions) and ship upstream's default as
-  `/usr/share/doc/skopeo/default-policy.json`.
+  Ubuntu, `containers-common` on rpm distributions), because skopeo fails without
+  it, and ship upstream's default as `/usr/share/doc/skopeo/default-policy.json`.
 - **No commit in `skopeo --version` from 1.21 on.** Up to 1.20 the commit is set at
   link time like upstream does (`-X main.gitCommit`). Newer releases read it from Go's
   VCS build info, which a module-proxy build does not have; `go version -m` shows the
@@ -309,8 +315,9 @@ GITHUB_REPOSITORY_NAME=skopeo IS_LATEST=false IS_LATEST_MINOR=false \
   goreleaser release --config .build/.goreleaser.yaml --clean --skip=publish,sign,docker,sbom
 ```
 
-Needs Go, goreleaser and zig 0.17.0 (`CC` is set in `.goreleaser.yaml`). With the same Go
-and zig versions (see `go version -m`), the binaries are bit-for-bit identical.
+Needs Go, goreleaser and the zig release named in [`.zig-version`](.zig-version) (`CC`
+is set in `.goreleaser.yaml`). With the same Go version (see `go version -m`) and zig
+version, the binaries are bit-for-bit identical.
 
 The tests take bats-core from [mise](https://mise.jdx.dev), pinned in `.build/mise.lock`:
 
@@ -325,6 +332,7 @@ This repository is checked out to `.build/` inside an upstream checkout.
 
 ```
 .goreleaser.yaml                     build, archive, package, image and signing configuration
+.zig-version                         zig release used as C compiler; Renovate bumps it
 Dockerfile                           image on Alpine; packages cross-installed with apk, no emulation
 hack/upstream-releases.sh            upstream releases to build
 hack/functional-test.sh              run test/functional.bats against a built binary
