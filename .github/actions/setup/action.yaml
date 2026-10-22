@@ -2,7 +2,7 @@ name: Set up build
 description: >-
   Expects upstream skopeo checked out at a release tag in the workspace root and this
   repository in .build/. Hides .build/ from git, so goreleaser sees a clean upstream
-  checkout, and installs Go, syft and goreleaser.
+  checkout, and installs Go, zig, syft and goreleaser.
 
 inputs:
   version:
@@ -12,10 +12,11 @@ inputs:
 runs:
   using: composite
   steps:
+    # setup-zig keeps zig's caches in .zig-cache/ of the workspace.
     - name: Hide .build from git
       shell: bash
       run: |
-        printf '/.build/\n/dist/\n' >> .git/info/exclude
+        printf '/.build/\n/dist/\n/.zig-cache/\n' >> .git/info/exclude
         if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
           git status --short --untracked-files=all
           echo "::error::upstream checkout is not clean"
@@ -34,6 +35,25 @@ runs:
     - name: Pin Go toolchain
       shell: bash
       run: echo GOTOOLCHAIN=local >> "$GITHUB_ENV"
+
+    # C compiler for both architectures, with musl for static linking.
+    - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+      with:
+        version: 0.17.0
+        use-cache: false
+
+    # musl 1.2.4 removed the basename() declaration from string.h. Older versions of
+    # containers/storage call it in pkg/unshare/unshare.c without including libgen.h, and
+    # zig's clang refuses implicit declarations, so for those releases libgen.h is
+    # included into every C file. Assembly files get CGO_CFLAGS too, hence the guard.
+    - name: Work around missing libgen.h
+      shell: bash
+      run: | # zizmor: ignore[github-env] only a fixed path goes into GITHUB_ENV
+        if ! grep -q '<libgen.h>' vendor/*/*/storage/pkg/unshare/unshare.c vendor/*/storage/pkg/unshare/unshare.c 2>/dev/null; then
+          echo "::notice::containers/storage does not include libgen.h, including it into every C file"
+          printf '#ifndef __ASSEMBLER__\n#include <libgen.h>\n#endif\n' > "${RUNNER_TEMP}/libgen-compat.h"
+          echo "CGO_COMPAT_CFLAGS=-include ${RUNNER_TEMP}/libgen-compat.h" >> "$GITHUB_ENV"
+        fi
 
     - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
 
