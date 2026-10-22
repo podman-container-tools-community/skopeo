@@ -1,0 +1,36 @@
+name: rebuild
+
+# Rebuilds the images of every published release weekly with the current Dockerfile, so
+# vX.Y.Z and the floating tags pick up Alpine and package updates. Each release gets its
+# own release.yaml run on main with the images input (see release.yaml); vX.Y.Z-immutable
+# stays untouched.
+
+on:
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read # list releases
+      actions: write # dispatch release.yaml
+    steps:
+      - name: Dispatch image rebuilds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release list --exclude-drafts --limit 1000 --json tagName --jq '.[].tagName' |
+            while read -r tag; do
+              echo "Rebuilding images of ${tag}"
+              gh workflow run release.yaml --ref main -f "images=${tag}"
+            done
