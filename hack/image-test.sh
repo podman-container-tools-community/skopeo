@@ -27,11 +27,8 @@ for arch in amd64 arm64; do
   platforms+=("linux/${arch}")
 done
 
-# As goreleaser does (build_args in .goreleaser.yaml): the storage driver depends on it.
-version="$(jq -r .version "${dist}/metadata.json")"
 build() {
-  docker buildx build --quiet --build-arg SKOPEO_VERSION="${version}" \
-    -f "${repo}/Dockerfile" "$@" "${work}/ctx" >/dev/null
+  docker buildx build --quiet -f "${repo}/Dockerfile" "$@" "${work}/ctx" >/dev/null
 }
 for platform in "${platforms[@]}"; do
   if [[ "${platform}" != "linux/${host}" ]]; then

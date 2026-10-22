@@ -25,29 +25,50 @@ gomod:
     - GOFLAGS=-mod=mod
 
 builds:
+  # skopeo needs cgo for rootless containers-storage: containers/storage enters the user
+  # namespace from a C constructor (pkg/unshare); without it skopeo re-executes itself
+  # forever. Linked statically against musl with zig as C compiler, so both architectures
+  # build on one runner.
   - id: skopeo
     main: ./cmd/skopeo
     binary: skopeo
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
+      # go-sqlite3 uses the *64 functions such as pread64, which musl 1.2.4 only declares
+      # with _LARGEFILE64_SOURCE. CGO_COMPAT_CFLAGS: see .github/actions/setup.
+      - CGO_CFLAGS=-O2 -g -D_LARGEFILE64_SOURCE {{ envOrDefault "CGO_COMPAT_CFLAGS" "" }}
     goos:
       - linux
     goarch:
       - amd64
       - arm64
+    overrides:
+      - goos: linux
+        goarch: amd64
+        goamd64: v1
+        env:
+          - CC=zig cc -target x86_64-linux-musl
+      - goos: linux
+        goarch: arm64
+        goarm64: v8.0
+        env:
+          - CC=zig cc -target aarch64-linux-musl
     flags:
       - -trimpath
-    # Same tags upstream uses for DISABLE_CGO=1 builds:
-    # - containers_image_openpgp: pure-Go OpenPGP instead of gpgme (cgo)
-    # - exclude_graphdriver_btrfs: btrfs driver needs libbtrfs headers (cgo)
-    # - exclude_graphdriver_devicemapper: devicemapper needs libdevmapper (cgo);
+    # Everything that needs shared C libraries is left out:
+    # - containers_image_openpgp: pure-Go OpenPGP instead of gpgme; no GPG signing
+    # - exclude_graphdriver_btrfs: btrfs driver needs libbtrfs headers
+    # - exclude_graphdriver_devicemapper: devicemapper needs libdevmapper;
     #   upstream stopped setting it in 1.16; it is harmless for newer versions
+    # Not set: libsubid, libsqlite3 (go-sqlite3 uses its bundled SQLite instead).
     tags:
       - containers_image_openpgp
       - exclude_graphdriver_btrfs
       - exclude_graphdriver_devicemapper
     ldflags:
       - -s -w
+      # zig links the C parts; -s there strips their debug info too.
+      - -linkmode external -extldflags '-static -s'
       # Upstream's Makefile sets this up to 1.20. From 1.21 on, gitCommit is a function
       # reading VCS info from the build, which a module proxy build has none of, and the
       # linker ignores this flag.
@@ -140,9 +161,6 @@ dockers_v2:
     extra_files:
       - default-policy.json
       - .build/packaging/image/storage.conf
-    # The Dockerfile picks the storage driver by version.
-    build_args:
-      SKOPEO_VERSION: "{{ .Version }}"
     platforms:
       - linux/amd64
       - linux/arm64

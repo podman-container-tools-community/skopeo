@@ -98,8 +98,8 @@ copy:
 works as any user (Kubernetes `runAsUser`, `docker run --user`). The image runs as root
 by default and, like upstream's, has a `skopeo` user (uid 1000) with subordinate IDs,
 `newuidmap`/`newgidmap` and `fuse-overlayfs`, so `containers-storage:` also works inside
-a container (`/etc/containers/storage.conf`), as root only: see
-[Limitations](#limitations) for rootless.
+a container (`/etc/containers/storage.conf`), as root and as the `skopeo` user (with its
+own `~/.config/containers/storage.conf`).
 
 Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (BusyBox `sh`, no
 `bash`), `linux/amd64` and `linux/arm64` only, no GPG signing (see
@@ -153,11 +153,10 @@ so there is no version list to maintain here.
    registries, OCI layouts, `dir:` and `containers-storage:` (overlay), plus `inspect`,
    `sync` and `list-tags`. [`test/image.bats`](test/image.bats) uses the image built from
    the release: `skopeo login` as root and as uid 1000, the `skopeo` user and its
-   subordinate IDs and `newuidmap`, and `containers-storage:` as root (fuse-overlayfs;
-   vfs before 1.18).
-   Upstream's own integration tests are not run,
-   because for older releases they fail on registry content that changed since and on
-   test infrastructure that no longer exists, not on the binary.
+   subordinate IDs and `newuidmap`, and `containers-storage:` with fuse-overlayfs as root
+   and rootless. Upstream's own integration tests are not run, because for older releases
+   they fail on registry content that changed since and on test infrastructure that no
+   longer exists, not on the binary.
 4. [`ci.yaml`](.github/workflows/ci.yaml) runs `test.yaml` for the newest release of every
    minor version on pull requests.
 
@@ -202,7 +201,11 @@ gh workflow run rebuild.yaml --repo podman-container-tools-community/skopeo -f a
   Exceptions for releases whose pinned dependencies break with the newest Go are listed
   in [`.github/actions/setup`](.github/actions/setup/action.yaml): 1.23.x uses Go 1.26.
   The Go version used is recorded in each binary (`go version -m`).
-- Build tags match upstream's own `DISABLE_CGO=1` builds: `containers_image_openpgp`
+- skopeo is built with cgo and linked statically against musl, with
+  [zig](https://ziglang.org) as C compiler for both architectures. cgo is needed for
+  rootless `containers-storage:`: containers/storage enters the user namespace from a C
+  constructor (`pkg/unshare`).
+- Build tags leave out what needs shared C libraries: `containers_image_openpgp`
   (pure-Go OpenPGP instead of gpgme), `exclude_graphdriver_btrfs` and
   `exclude_graphdriver_devicemapper` (needed up to 1.15).
 - The upstream commit is passed with `-X main.gitCommit`, as upstream's Makefile does.
@@ -266,26 +269,20 @@ on the released binary.
 
 ## Limitations
 
-The binaries are static and built without cgo (`CGO_ENABLED=0`). Compared to a
-distribution package, this means:
+The binaries are static, linked against musl. Compared to a distribution package, this
+means:
 
 - **No GPG signing.** `skopeo copy --sign-by <fingerprint>` and `skopeo standalone-sign`
   fail with "signing is not supported". Verifying GPG signatures through `policy.json`
   (`signedBy` with `keyPath`) works. Sigstore signing and verification work fully.
   Without `keyPath`, only the legacy `~/.gnupg/pubring.gpg` is read, not `pubring.kbx`.
 - **No Sequoia-PGP** signature backend.
-- **No btrfs storage driver.** overlay and vfs work for `containers-storage:` from 1.18
-  on. **Up to 1.17 only vfs works**: containers/storage registered the overlay driver
-  for cgo builds only, so `[overlay@...]` fails with "driver not supported". The images
-  of those releases configure vfs in `/etc/containers/storage.conf` instead of overlay.
-- **No rootless `containers-storage:`.** containers/storage enters the user namespace in
-  a cgo constructor (`pkg/unshare`), so as a non-root user skopeo re-executes itself
-  until it fails, on a host and in the image alike. Run `containers-storage:` copies as
-  root; every other transport works as any user.
+- **No btrfs or devicemapper storage driver.** overlay and vfs work for
+  `containers-storage:`, as root and rootless.
 - **No libsubid.** Subordinate ID ranges served by NSS providers (sssd, FreeIPA) are not
   supported; libsubid loads those with `dlopen`, which is impossible in a static binary.
-- **No NSS.** User lookups read `/etc/passwd` only, and name resolution uses
-  `/etc/hosts` and DNS only: no LDAP users, mDNS (`.local`) or systemd-resolved
+- **No NSS.** musl has none: user lookups read `/etc/passwd` only, and name resolution
+  uses `/etc/hosts` and DNS only: no LDAP users, mDNS (`.local`) or systemd-resolved
   specific behaviour.
 - **No default configuration.** The binary does not install
   `/etc/containers/policy.json`; the archive contains upstream's default as
@@ -306,13 +303,14 @@ distribution package, this means:
 git clone --branch v1.24.1 https://github.com/podman-container-tools/skopeo
 cd skopeo
 git clone https://github.com/podman-container-tools-community/skopeo .build
-printf '/.build/\n/dist/\n' >> .git/info/exclude
+printf '/.build/\n/dist/\n/.zig-cache/\n' >> .git/info/exclude
 GITHUB_REPOSITORY_OWNER=podman-container-tools-community GITHUB_REPOSITORY=podman-container-tools-community/skopeo \
 GITHUB_REPOSITORY_NAME=skopeo IS_LATEST=false IS_LATEST_MINOR=false \
   goreleaser release --config .build/.goreleaser.yaml --clean --skip=publish,sign,docker,sbom
 ```
 
-With the same Go version (see `go version -m`), the binaries are bit-for-bit identical.
+Needs Go, goreleaser and zig 0.17.0 (`CC` is set in `.goreleaser.yaml`). With the same Go
+and zig versions (see `go version -m`), the binaries are bit-for-bit identical.
 
 ## Layout
 
@@ -328,7 +326,7 @@ hack/install-bats.sh                 install the pinned bats-core release, SHA-2
 hack/update-checksums.sh             recompute the sha256 pins after a version bump
 test/functional.bats                 functional tests for the binary
 test/image.bats                      tests for the image
-.github/actions/setup/               hide .build/ from Git, pick and install Go, syft, goreleaser
+.github/actions/setup/               hide .build/ from Git, pick and install Go, zig, syft, goreleaser
 .github/workflows/test.yaml          build one release, run functional and image tests
 .github/workflows/ci.yaml            pull requests: test.yaml for newest release per minor
 .github/workflows/sync.yaml          schedule and main: tag new releases, dispatch release.yaml

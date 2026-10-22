@@ -12,14 +12,12 @@ FROM alpine:3.24.3@sha256:b3413572228e34bd1c9245f5565e6cd127005655e8a7899aef33d8
 # image adds one layer on top of Alpine's.
 FROM --platform=$BUILDPLATFORM alpine:3.24.3@sha256:b3413572228e34bd1c9245f5565e6cd127005655e8a7899aef33d8e83255c9e6 AS delta
 ARG TARGETARCH
-ARG SKOPEO_VERSION
 SHELL ["/bin/ash", "-euo", "pipefail", "-c"]
 # Versions come from the Alpine release the base image pins; apk cannot pin older ones,
 # because the repositories only keep the newest.
 # hadolint ignore=DL3018
 RUN apk add --no-cache findutils tar
 COPY --from=base / /rootfs/
-COPY .build/packaging/image/storage.conf /storage.conf
 # hadolint ignore=DL3018
 RUN <<EOF
 case "${TARGETARCH}" in
@@ -41,30 +39,19 @@ echo 'skopeo:x:1000:' >> /rootfs/etc/group
 echo 'skopeo:!::0:::::' >> /rootfs/etc/shadow
 printf '%s\n' root:1:65535 skopeo:1:999 skopeo:1001:64535 > /rootfs/etc/subuid
 cp /rootfs/etc/subuid /rootfs/etc/subgid
-mkdir -p /rootfs/home/skopeo
-chown 1000:1000 /rootfs/home/skopeo
+# Its own storage configuration: containers/storage takes runroot and graphroot from
+# /etc/containers/storage.conf for rootless too, and only root can write those. Without
+# them it uses ~/.local/share/containers/storage and a run directory in /tmp.
+mkdir -p /rootfs/home/skopeo/.config/containers
+printf '%s\n' '[storage]' 'driver = "overlay"' '' '[storage.options.overlay]' \
+  'mount_program = "/usr/bin/fuse-overlayfs"' 'mountopt = "nodev,fsync=0"' \
+  > /rootfs/home/skopeo/.config/containers/storage.conf
+chown -R 1000:1000 /rootfs/home/skopeo
 
 # Additional image store, as in upstream's image.
 mkdir -p /rootfs/var/lib/shared/overlay-images /rootfs/var/lib/shared/overlay-layers
 touch /rootfs/var/lib/shared/overlay-images/images.lock
 touch /rootfs/var/lib/shared/overlay-layers/layers.lock
-
-# Up to 1.17 containers/storage registers the overlay driver only in cgo builds, so
-# those images use vfs, with the same paths and the same kind of additional image store.
-: "${SKOPEO_VERSION:?build arg SKOPEO_VERSION is required}"
-mkdir -p /rootfs/etc/containers
-if [ "$(printf '%s\n' "${SKOPEO_VERSION}" 1.18.0 | sort -V | head -1)" = 1.18.0 ]; then
-  cp /storage.conf /rootfs/etc/containers/storage.conf
-else
-  {
-    echo '# skopeo before 1.18 has no overlay driver without cgo: vfs instead of overlay.'
-    sed -e 's/^driver = "overlay"/driver = "vfs"/' -e '/^\[storage\.options\.overlay\]/,$d' \
-      /storage.conf
-  } > /rootfs/etc/containers/storage.conf
-  mkdir -p /rootfs/var/lib/shared/vfs-images /rootfs/var/lib/shared/vfs-layers
-  touch /rootfs/var/lib/shared/vfs-images/images.lock
-  touch /rootfs/var/lib/shared/vfs-layers/layers.lock
-fi
 
 # ctime cannot be preserved, so -cnewer finds exactly what the steps above wrote.
 mkdir /delta
@@ -76,6 +63,7 @@ EOF
 FROM base
 ARG TARGETPLATFORM
 COPY --from=delta /delta/ /
+COPY .build/packaging/image/storage.conf /etc/containers/storage.conf
 COPY default-policy.json /etc/containers/policy.json
 COPY $TARGETPLATFORM/skopeo /usr/bin/skopeo
 # Same default as upstream's image. Without it the credentials file defaults to

@@ -102,23 +102,16 @@ sh_in_image() {
   sh_in_image -- 'command -v update-ca-certificates'
 }
 
-@test "copy to containers-storage as root" {
-  # overlay through fuse-overlayfs; vfs for releases before 1.18 (no overlay without cgo).
+@test "copy to containers-storage as root uses fuse-overlayfs" {
   sh_in_image --privileged -- '
-    driver="$(sed -n "s/^driver = \"\(.*\)\"/\1/p" /etc/containers/storage.conf)"
-    if [ "${driver}" = overlay ]; then
-      grep -q "mount_program = \"/usr/bin/fuse-overlayfs\"" /etc/containers/storage.conf
-    fi
+    grep -q "mount_program = \"/usr/bin/fuse-overlayfs\"" /etc/containers/storage.conf
     skopeo copy --src-tls-verify=false docker://${REGISTRY}/alpine:latest \
       containers-storage:localhost/alpine:latest
     skopeo inspect containers-storage:localhost/alpine:latest >/dev/null
-    test -d "/var/lib/containers/storage/${driver}"'
+    test -d /var/lib/containers/storage/overlay'
 }
 
 @test "copy to containers-storage as the skopeo user (rootless)" {
-  # containers/storage enters the user namespace in a cgo constructor (pkg/unshare), so a
-  # cgo-free skopeo re-executes itself forever instead.
-  skip "rootless containers-storage: needs a cgo build of skopeo"
   sh_in_image --privileged --user skopeo -- '
     skopeo copy --src-tls-verify=false docker://${REGISTRY}/alpine:latest \
       containers-storage:localhost/alpine:latest

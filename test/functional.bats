@@ -11,14 +11,7 @@ setup_file() {
   WORK="$(mktemp -d)"
   export WORK
 
-  # Up to 1.17, containers/storage only registers the overlay driver in cgo builds.
-  local version
-  version="$("${SKOPEO}" --version | awk '{print $3}')"
-  DRIVER=overlay
-  if [[ "$(printf '%s\n' "${version}" 1.18.0 | sort -V | head -1)" != 1.18.0 ]]; then
-    DRIVER=vfs
-  fi
-  export DRIVER
+  export DRIVER=overlay
   export STORAGE="containers-storage:[${DRIVER}@${WORK}/storage+${WORK}/run]"
 
   SUDO=sudo
