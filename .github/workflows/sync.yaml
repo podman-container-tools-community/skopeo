@@ -1,8 +1,9 @@
 name: sync
 
-# Tags every upstream release (hack/upstream-releases.sh) that has no published release
-# here yet and starts release.yaml for it. Tags created with GITHUB_TOKEN do not trigger
-# workflows, so the release is dispatched. A tag whose release failed or was never
+# Starts release.yaml on main for every upstream release (hack/upstream-releases.sh)
+# that has no published release here yet, after creating the release's tag on the
+# repository's first commit. The tag only anchors the GitHub release and never moves;
+# release.yaml always runs the current main. A release that failed or was never
 # dispatched is picked up again on the next run, unless a release run for it is still
 # queued or running.
 #
@@ -36,6 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The whole history, for the first commit.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Tag and dispatch releases
@@ -47,15 +50,22 @@ jobs:
           set -o pipefail
           # Assigned first: a failure inside the for list would go unnoticed.
           tags="$(hack/upstream-releases.sh | tac)"
+          root="$(git rev-list --max-parents=0 HEAD | tail -1)"
           started=0
           for tag in ${tags}; do
-            # Published (not draft) release: done.
-            if [[ "$(gh release view "${tag}" --repo "${GH_REPO}" --json isDraft --jq .isDraft 2>/dev/null)" == false ]]; then
-              continue
+            # Published release: done. Only "no release" (404) means work to do; any
+            # other API error must not start a second release.
+            if published="$(gh api "repos/${GH_REPO}/releases/tags/${tag}" --jq .draft 2>&1)"; then
+              [[ "${published}" == true ]] || continue
+            elif ! grep -q 'HTTP 404' <<<"${published}"; then
+              echo "${published}" >&2
+              echo "::error::cannot tell whether ${tag} has a release"
+              exit 1
             fi
-            # A release run for the tag is queued or running: leave it alone.
-            active="$(gh run list --repo "${GH_REPO}" --workflow release.yaml --branch "${tag}" \
-              --json status --jq '[.[] | select(.status != "completed")] | length')"
+            # A release run for the version (run-name) is queued or running: leave it alone.
+            active="$(gh run list --repo "${GH_REPO}" --workflow release.yaml --limit 100 \
+              --json displayTitle,status \
+              --jq '[.[] | select(.displayTitle == "'"${tag}"'" and .status != "completed")] | length')"
             if [[ "${active}" != 0 ]]; then
               continue
             fi
@@ -64,19 +74,18 @@ jobs:
               continue
             fi
             started=$((started + 1))
-            # A tag without a published release is referenced by nothing that must stay
-            # stable, so a retry moves it to the current main: release.yaml runs this
-            # repository at the tag, and a fix merged after the failure must reach it.
-            if gh api "repos/${GH_REPO}/git/ref/tags/${tag}" --silent 2>/dev/null; then
-              echo "::notice::${tag} is tagged but has no published release, moving the tag to ${GITHUB_SHA} and starting release.yaml again"
-              gh api --method PATCH "repos/${GH_REPO}/git/refs/tags/${tag}" \
-                -f "sha=${GITHUB_SHA}" \
-                -F force=true
-            else
-              echo "Tagging ${tag} at ${GITHUB_SHA}"
+            # The tag anchors the GitHub release on the first commit; a retry keeps it.
+            if existing="$(gh api "repos/${GH_REPO}/git/ref/tags/${tag}" --jq .object.sha 2>&1)"; then
+              echo "::notice::${tag} is tagged (${existing}) but has no published release, starting release.yaml again"
+            elif grep -q 'HTTP 404' <<<"${existing}"; then
+              echo "Tagging ${tag} at ${root}"
               gh api --method POST "repos/${GH_REPO}/git/refs" \
                 -f "ref=refs/tags/${tag}" \
-                -f "sha=${GITHUB_SHA}"
+                -f "sha=${root}"
+            else
+              echo "${existing}" >&2
+              echo "::error::cannot tell whether ${tag} is tagged"
+              exit 1
             fi
-            gh workflow run release.yaml --ref "${tag}"
+            gh workflow run release.yaml --ref main -f "version=${tag}"
           done

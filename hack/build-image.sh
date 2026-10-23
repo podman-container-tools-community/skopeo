@@ -75,14 +75,16 @@ case "${mode}" in
   : "${VERSION:?}" "${REVISION:?}" "${CREATED:?}"
   tags=("${VERSION}")
   # The -immutable tag is pushed once: a retried release must not move it.
+  immutable=""
   if [[ "${IMMUTABLE:-false}" == true ]]; then
-    if existing="$(docker buildx imagetools inspect "${target}:${VERSION}-immutable" 2>&1)"; then
-      echo "::notice::${target}:${VERSION}-immutable exists already and is kept" >&2
-    elif grep -qiE 'not found|MANIFEST_UNKNOWN|NAME_UNKNOWN' <<<"${existing}"; then
+    if immutable="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "${target}:${VERSION}-immutable" 2>&1)"; then
+      echo "::notice::${target}:${VERSION}-immutable exists already (${immutable}) and is kept" >&2
+    elif grep -qiE 'not found|MANIFEST_UNKNOWN|NAME_UNKNOWN' <<<"${immutable}"; then
+      immutable=""
       tags+=("${VERSION}-immutable")
     else
       # Any other error (registry, login, network) must not end in a second push.
-      echo "${existing}" >&2
+      echo "${immutable}" >&2
       echo "::error::cannot tell whether ${target}:${VERSION}-immutable exists" >&2
       exit 1
     fi
@@ -118,6 +120,11 @@ case "${mode}" in
   build --push "${args[@]}"
   digest="$(jq -r '."containerimage.digest"' "${work}/metadata.json")"
   cosign sign --yes "${target}@${digest}"
+  # A kept -immutable digest from a run that failed between push and signing gets its
+  # signature now; signing a signed digest again only adds a signature.
+  if [[ -n "${immutable}" && "${immutable}" != "${digest}" ]]; then
+    cosign sign --yes "${target}@${immutable}"
+  fi
   echo "${target}@${digest}"
   ;;
 *)

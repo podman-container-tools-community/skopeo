@@ -38,8 +38,9 @@ test/                                bats tests for the binary and the image
 .github/workflows/test.yaml          build one release, run functional and image tests
 .github/workflows/ci.yaml            pull requests: test.yaml for newest release per minor
 .github/workflows/lint.yaml          pull requests: super-linter
-.github/workflows/sync.yaml          schedule and main: tag new releases, dispatch release.yaml
-.github/workflows/release.yaml       dispatch on a tag: test.yaml, then release, images, signing
+.github/workflows/sync.yaml          schedule and main: tag new releases, dispatch release.yaml on main
+.github/workflows/release.yaml       dispatch on main with a version: test.yaml, release, images.yaml, publish
+.github/workflows/images.yaml        called by release.yaml and rebuild.yaml: image build, test, push, signing
 .github/workflows/rebuild.yaml       weekly and on image changes: rebuild images from released binaries
 .github/linters/                     actionlint and zizmor configuration for super-linter
 packaging/gpg.asc                    public GPG key for packages and the apt repository
@@ -160,27 +161,40 @@ Conventions:
 - [`sync.yaml`](.github/workflows/sync.yaml) runs every 6 hours, on every push to `main`
   and on demand. For every upstream release (from
   [`hack/upstream-releases.sh`](hack/upstream-releases.sh), `v1.11.0` and newer) that has
-  no tag here yet, it creates the tag on the current commit and dispatches
-  [`release.yaml`](.github/workflows/release.yaml) on it, newest first, at most
-  `MAX_RELEASES_PER_RUN` per run (repository variable, default 10).
-- `release.yaml` runs `test.yaml` first, then publishes: GitHub release, packages, apt
-  repository, images on `ghcr.io`, signatures and attestations. Image tags: `vX.Y.Z` and
+  no published release here yet, it creates the tag on the repository's first commit
+  (if missing) and dispatches [`release.yaml`](.github/workflows/release.yaml) on `main`
+  with the version as input, newest first, at most `MAX_RELEASES_PER_RUN` per run
+  (repository variable, default 10). Only a 404 counts as "no release" or "no tag"; any
+  other API error stops the run, so a flaky API never starts a second release.
+- `release.yaml` runs on `main` only (it fails on any other ref) and takes the upstream
+  tag as `version` input, so every release is built by the current pipeline and signed
+  as `release.yaml@refs/heads/main`. The release's tag never moves and carries no
+  pipeline state; the pipeline commit is in the release notes (`PIPELINE_COMMIT`).
+  It runs `test.yaml` first, then creates the draft release with binaries, packages,
+  apt repository, signatures and attestations, calls `images.yaml` for the images on
+  `ghcr.io` and publishes the release only when those are pushed. Image tags: `vX.Y.Z` and
   `vX.Y.Z-immutable` always, `vX.Y` for the newest release of a minor, `vX` and `latest`
   for the newest upstream release by version. `vX.Y.Z-immutable` is pushed only by the
-  release itself and never moves; a retried run keeps the first run's tag.
+  release itself and never moves; a retried run keeps the first run's tag and signs its
+  digest too, in case the first run failed between push and signing.
+- [`images.yaml`](.github/workflows/images.yaml) (`workflow_call`) builds, tests, pushes
+  and signs the images of one release from its archives, verified against the
+  cosign-signed `checksums.txt`, with the current `Dockerfile`. `release.yaml` calls it
+  with `immutable: true` and the archives as an Actions artifact (the release is still a
+  draft), then publishes the release; `rebuild.yaml` calls it per release. One caller
+  file means one signing identity for every image: `images.yaml@refs/heads/main`.
 - [`rebuild.yaml`](.github/workflows/rebuild.yaml) rebuilds images without a new release:
   weekly for the newest release of every minor, after a merge to `main` that changes the
-  `Dockerfile`, `packaging/image` or `hack/build-image.sh`, and on demand. It downloads
-  the release archives, checks them against the cosign-signed `checksums.txt`, builds
-  with the current `Dockerfile`, runs `test/image.bats` and only then pushes and signs
-  every tag of that release except `vX.Y.Z-immutable`. No toolchain is involved.
+  `Dockerfile`, `packaging/image` or `hack/build-image.sh`, and on demand. It only lists
+  the releases and calls `images.yaml` for each, which updates every tag of that release
+  except `vX.Y.Z-immutable`. No toolchain is involved.
 - `sync.yaml` and `rebuild.yaml` do nothing until the repository variable
   `RELEASES_ENABLED` is `true`, so pull requests can be merged without creating tags or
   releases. Setting that variable and starting releases by hand is the maintainer's
   call:
 
   ```sh
-  gh workflow run release.yaml --ref v1.24.1
+  gh workflow run release.yaml --ref main -f version=v1.24.1
   gh workflow run rebuild.yaml -f version=v1.24.1   # or -f all=true
   ```
 
@@ -217,4 +231,9 @@ Conventions:
   release that keeps older packages was considered and not chosen; don't add one
   without the maintainer's decision. It is documented under "Limitations" in
   `README.md`.
+- Signing identities are the workflow file at `refs/heads/main`: `release.yaml` for
+  `checksums.txt`, `images.yaml` for every image. `release.yaml` and `rebuild.yaml`
+  must keep running on `main` only, and images are signed only inside `images.yaml`; a
+  signature from another ref or file changes what users have to accept when verifying.
+- Pull requests that only change Markdown build nothing (`ci.yaml` skips `test`).
 - Keep `README.md` user-facing. Build internals, tests, workflows and rules belong here.

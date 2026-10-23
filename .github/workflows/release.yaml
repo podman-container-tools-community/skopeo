@@ -1,53 +1,73 @@
 name: release
-run-name: ${{ github.ref_name }}
+run-name: ${{ inputs.version }}
 
-# Releases the upstream version named by the tag this workflow runs on: GitHub release
-# with binaries, signed deb/rpm packages, apt repository, SBOMs and cosign signature,
-# images on ghcr.io (hack/build-image.sh), and build provenance.
-# test.yaml (build and functional tests) has to pass first.
+# Releases the upstream version given as input: GitHub release with binaries, signed
+# deb/rpm packages, apt repository, SBOMs, cosign signature and build provenance, then
+# the images on ghcr.io through images.yaml. test.yaml (build and functional tests) has
+# to pass first, and the release stays a draft until the images are pushed.
 #
-# Started by sync.yaml, or by hand for an existing tag:
-#   gh workflow run release.yaml --ref v1.24.1
+# Runs on main only, so every release is built by the current pipeline and signed with
+# one identity: release.yaml@refs/heads/main for checksums.txt, images.yaml@refs/heads/main
+# for the images. The release's tag is created by sync.yaml on the repository's first
+# commit: it anchors the GitHub release and nothing else; the pipeline commit is named
+# in the release notes. Started by sync.yaml, or by hand:
+#   gh workflow run release.yaml --ref main -f version=v1.24.1
 # Images of existing releases are rebuilt by rebuild.yaml.
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Upstream tag, e.g. v1.24.1
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
   test:
     uses: ./.github/workflows/test.yaml
     with:
-      version: ${{ github.ref_name }}
+      version: ${{ inputs.version }}
 
   release:
     needs: test
     runs-on: ubuntu-26.04
-    name: release (${{ github.ref_name }})
+    name: release (${{ inputs.version }})
     permissions:
       contents: write # GitHub release
-      packages: write # ghcr.io
       id-token: write # cosign keyless signing and attestations
       attestations: write
+    outputs:
+      latest: ${{ steps.floating.outputs.latest }}
     env:
-      VERSION: ${{ github.ref_name }}
+      VERSION: ${{ inputs.version }}
     steps:
       - name: Check ref
-        if: github.ref_type != 'tag'
+        if: github.ref != 'refs/heads/main'
         run: |
-          echo "::error::release.yaml must run on a tag (--ref <tag>), not ${GITHUB_REF}"
+          echo "::error::release.yaml must run on main (--ref main), not ${GITHUB_REF}"
           exit 1
+
+      # The tag anchors the GitHub release; goreleaser would otherwise create it on main.
+      - name: Check tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${VERSION}" --silent; then
+            echo "::error::no tag ${VERSION} in this repository; sync.yaml creates it"
+            exit 1
+          fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: podman-container-tools/skopeo
-          ref: ${{ github.ref }}
+          ref: refs/tags/${{ inputs.version }}
           persist-credentials: false
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,32 +77,22 @@ jobs:
 
       - uses: ./.build/.github/actions/setup
         with:
-          version: ${{ github.ref_name }}
+          version: ${{ inputs.version }}
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Floating tags: latest and vX follow the newest upstream release, vX.Y the newest
-      # release of that minor. The newest by version, not upstream's GitHub "latest"
-      # flag: that flag moves to a backport release of an older minor unless upstream
-      # resets it, and with it latest, vX, make_latest and the apt repository.
+      # latest and vX follow the newest upstream release by version, not upstream's
+      # GitHub "latest" flag: that flag moves to a backport release of an older minor
+      # unless upstream resets it, and with it make_latest and the apt repository.
       - name: Check floating tags
+        id: floating
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           releases="$(.build/hack/upstream-releases.sh)"
           latest="$(tail -1 <<<"${releases}")"
-          latest_minor="$(grep -F "${VERSION%.*}." <<<"${releases}" | tail -1)"
-          {
-            echo "IS_LATEST=$([[ "${VERSION}" == "${latest}" ]] && echo true || echo false)"
-            echo "IS_LATEST_MINOR=$([[ "${VERSION}" == "${latest_minor}" ]] && echo true || echo false)"
-          } >> "$GITHUB_ENV"
+          is_latest="$([[ "${VERSION}" == "${latest}" ]] && echo true || echo false)"
+          echo "IS_LATEST=${is_latest}" >> "$GITHUB_ENV"
+          echo "latest=${is_latest}" >> "$GITHUB_OUTPUT"
 
       # Key for the deb/rpm signatures and the apt repository (packaging/gpg.asc).
       - name: Import GPG key
@@ -100,16 +110,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
+          PIPELINE_COMMIT: ${{ github.sha }}
           NFPM_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
-      # From the binaries goreleaser just built, with the vX.Y.Z-immutable tag only the
-      # release pushes. Annotated with the upstream commit of the checkout.
-      - name: Build and push images
-        run: |
-          REVISION="$(git rev-parse HEAD)" CREATED="$(git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" \
-            IMMUTABLE=true .build/hack/build-image.sh --push dist "ghcr.io/${GITHUB_REPOSITORY}"
-        env:
-          TZ: UTC
 
       # Flat apt repository in the release assets; packaging/apt/skopeo.sources points at
       # releases/latest/download, which follows the newest upstream release. goreleaser
@@ -142,13 +144,46 @@ jobs:
         with:
           subject-checksums: dist/checksums.txt
 
-      - name: Publish release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${VERSION}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest="${IS_LATEST}"
+      # The archives for images.yaml: the release is still a draft, whose assets a job
+      # with contents: read cannot download.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ inputs.version }}
+          path: |
+            dist/checksums.txt
+            dist/checksums.txt.sigstore.json
+            dist/*_linux_amd64.tar.gz
+            dist/*_linux_arm64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Remove GPG key
         if: always()
         run: |
           rm -f "${RUNNER_TEMP}/gpg-private.asc"
           gpgconf --kill gpg-agent
+
+  images:
+    needs: release
+    uses: ./.github/workflows/images.yaml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      version: ${{ inputs.version }}
+      immutable: true
+      artifact: release-${{ inputs.version }}
+
+  publish:
+    needs: [release, images]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write # publish the release
+    env:
+      VERSION: ${{ inputs.version }}
+      IS_LATEST: ${{ needs.release.outputs.latest }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Publish release
+        run: gh release edit "${VERSION}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest="${IS_LATEST}"
