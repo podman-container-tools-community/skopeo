@@ -41,17 +41,20 @@ for arch in amd64 arm64; do
       [[ ! -f "${built[0]}" ]] || cp "${built[0]}" "${dir}/"
     done
   else
-    # The release's archive by its exact name, and only if the checksums.txt next to it
-    # (verified by images.yaml) lists it: an extra asset must not get in.
+    # The release's archive by its exact name, listed in the checksums.txt next to it
+    # (verified by images.yaml): an extra asset must not get in, and a missing archive
+    # must not end in an image for one architecture only.
     : "${VERSION:?needed to pick the archives}"
     archive="${NAME}_${VERSION#v}_linux_${arch}.tar.gz"
-    if [[ -f "${src}/${archive}" ]]; then
-      if ! grep -q "  ${archive}$" "${src}/checksums.txt"; then
-        echo "${archive} is not listed in ${src}/checksums.txt" >&2
-        exit 1
-      fi
-      tar -xzf "${src}/${archive}" -C "${dir}" "${BINARIES[@]}"
+    if [[ ! -f "${src}/${archive}" || ! -f "${src}/checksums.txt" ]]; then
+      echo "${src} has no ${archive} or no checksums.txt" >&2
+      exit 1
     fi
+    if ! grep -qE "^[0-9a-f]{64}  ${archive//./\\.}$" "${src}/checksums.txt"; then
+      echo "${archive} is not listed in ${src}/checksums.txt" >&2
+      exit 1
+    fi
+    tar -xzf "${src}/${archive}" -C "${dir}" "${BINARIES[@]}"
   fi
   if [[ "$(find "${dir}" -type f | wc -l)" -eq "${#BINARIES[@]}" ]]; then
     platforms+=("linux/${arch}")

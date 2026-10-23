@@ -69,10 +69,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          name="${GITHUB_REPOSITORY#*/}"
           gh release download "${VERSION}" --repo "${GITHUB_REPOSITORY}" --dir release \
             --pattern checksums.txt --pattern checksums.txt.sigstore.json \
-            --pattern "${name}_${VERSION#v}_linux_amd64.tar.gz" --pattern "${name}_${VERSION#v}_linux_arm64.tar.gz"
+            --pattern "skopeo_${VERSION#v}_linux_amd64.tar.gz" --pattern "skopeo_${VERSION#v}_linux_arm64.tar.gz"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: inputs.artifact != ''
