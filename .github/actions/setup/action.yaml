@@ -102,3 +102,28 @@ runs:
           grep -qx '  proxy: false' "${config}"
         fi
         echo "GORELEASER_CONFIG=${config}" >> "$GITHUB_ENV"
+
+    # Fetches the modules the build needs before goreleaser starts, retrying on errors:
+    # proxy.golang.org sometimes cuts a download off (stream error, INTERNAL_ERROR).
+    # goreleaser retries only its `go get` of the module and only on a 404, and go build
+    # does not retry at all. The modules land in the module cache, checked against go.sum
+    # and sum.golang.org, where goreleaser's build finds them. A build from the checkout
+    # uses its vendor directory and downloads nothing.
+    - name: Download Go modules
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        GOPROXY: https://proxy.golang.org
+        GOSUMDB: sum.golang.org
+      run: |
+        grep -qx '  proxy: true' "${GORELEASER_CONFIG}" || exit 0
+        module="$(go list -m)"
+        for attempt in 1 2 3 4 5; do
+          if go mod download && go mod download "${module}@${VERSION}"; then
+            exit 0
+          fi
+          echo "::warning::go mod download failed (attempt ${attempt} of 5)"
+          sleep $((attempt * 15))
+        done
+        echo "::error::go mod download failed 5 times"
+        exit 1
