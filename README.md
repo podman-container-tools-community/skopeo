@@ -130,6 +130,9 @@ compiled:
   with a GPG key, because apt and rpm cannot verify sigstore signatures; apt verifies
   the deb packages through the checksums in the signed `InRelease`. The key is kept in
   this repository's secrets and used only by the release workflow.
+- Every release is built with the newest stable Go, not the minimum in upstream's
+  `go.mod` (exceptions are listed in [`.github/actions/setup`](.github/actions/setup/action.yaml)).
+  The Go version used is recorded in each binary (`go version -m`).
 - Builds are reproducible: with the same Go and zig versions, anyone gets bit-for-bit
   identical binaries.
 
@@ -143,92 +146,22 @@ so there is no version list to maintain here.
 
 ## Release flow
 
-1. [`sync.yaml`](.github/workflows/sync.yaml) runs every 6 hours, on every push to `main`
-   and on demand. For every upstream release that has no tag here yet, it creates the tag
-   on the current commit and dispatches [`release.yaml`](.github/workflows/release.yaml)
-   on it. It only runs once the repository variable `RELEASES_ENABLED` is `true`, and
-   starts at most `MAX_RELEASES_PER_RUN` releases per run (a repository variable, default
-   10), newest first; the rest follow with the next runs.
-2. `release.yaml` builds that tag: GitHub release, packages, apt repository, images on
-   `ghcr.io` ([`hack/build-image.sh`](hack/build-image.sh)), signatures and attestations.
-   Image tags: `vX.Y.Z` and `vX.Y.Z-immutable` always, `vX.Y` for the newest release of
-   a minor, `vX` and `latest` for the newest upstream release by version (not upstream's
-   GitHub "latest" flag, which a backport release of an older minor can take).
-   `vX.Y.Z-immutable` is pushed only by the release itself and never moves; a release
-   run that fails after the image step and is retried keeps the first run's tag (same
-   binaries, since the build is reproducible, but that run's signature and SBOM).
-3. Before anything is published, [`test.yaml`](.github/workflows/test.yaml) builds the
-   release and runs three [bats-core](https://github.com/bats-core/bats-core) suites.
-   [`test/functional.bats`](test/functional.bats) uses the amd64 binary: copies between
-   registries, OCI layouts, `dir:` and `containers-storage:` (overlay), plus `inspect`,
-   `sync` and `list-tags`. [`test/signing.bats`](test/signing.bats) signs with a sigstore
-   key and verifies sigstore and GPG (simple signing) signatures through a `policy.json`,
-   and checks that `--sign-by` fails with a clear error. [`test/image.bats`](test/image.bats) uses the image built from
-   the release: `skopeo login` as root and as uid 1000, the `skopeo` user and its
-   subordinate IDs and `newuidmap`, and `containers-storage:` with fuse-overlayfs as root
-   and rootless. Upstream's own integration tests are not run, because for older releases
-   they fail on registry content that changed since and on test infrastructure that no
-   longer exists, not on the binary.
-4. [`ci.yaml`](.github/workflows/ci.yaml) runs `test.yaml` for the newest release of every
-   minor version on pull requests.
+New upstream releases are picked up automatically, usually within six hours. Each
+release is built and tested ([`test/`](test)) before anything is published, then
+released here with binaries, packages, the apt repository and images on `ghcr.io`, all
+signed.
 
-A release can also be started by hand for an existing tag:
-
-```sh
-gh workflow run release.yaml --ref v1.24.1
-```
+Image tags: `vX.Y.Z` and `vX.Y.Z-immutable` always, `vX.Y` for the newest release of a
+minor, `vX` and `latest` for the newest upstream release by version (not upstream's
+GitHub "latest" flag, which a backport release of an older minor can take).
+`vX.Y.Z-immutable` is pushed once by the release and never moves.
 
 Images are rebuilt without a new release when the Alpine base image or its packages
-change: [`rebuild.yaml`](.github/workflows/rebuild.yaml) runs weekly for the newest
-release of every minor, after a merge to `main` that changes the `Dockerfile`,
-`packaging/image` or `hack/build-image.sh`, and on demand (`-f all=true` for every
-release, `-f version=v1.24.1` for one). It downloads the release's archives, checks them
-against the cosign-signed `checksums.txt`, builds the image with the current `Dockerfile`
-through [`hack/build-image.sh`](hack/build-image.sh), runs `test/image.bats` against it and
-then pushes and signs all tags of that release except `v1.24.1-immutable`, which keeps the
-digest of the original release.
-No toolchain is involved, so the images always contain exactly the released binaries.
-Like `sync.yaml`, it only runs once `RELEASES_ENABLED` is `true`.
-
-```sh
-gh workflow run rebuild.yaml --repo podman-container-tools-community/skopeo -f all=true
-```
-
-## How it works
-
-- The workflows check out upstream skopeo at the release tag into the workspace root and
-  this repository into `.build/`. [`.github/actions/setup`](.github/actions/setup/action.yaml)
-  hides `.build/` from Git (`.git/info/exclude`), so goreleaser sees a clean upstream
-  checkout and takes module path, `go.sum`, tag and `default-policy.json` from it. The
-  goreleaser configuration is used from `.build/`.
-- goreleaser's `gomod.proxy` then compiles `<module>/cmd/skopeo@<tag>` from the Go module
-  proxy, verified against sum.golang.org, rather than from the checkout. The module path
-  changed from `github.com/containers/skopeo` to `go.podman.io/skopeo` in 1.23; both work.
-- Every release is built with the newest stable Go, not the version in upstream's
-  `go.mod` (only a minimum, and end-of-life for older releases: `go 1.19` for 1.14.x).
-  Exceptions for releases whose pinned dependencies break with the newest Go are listed
-  in [`.github/actions/setup`](.github/actions/setup/action.yaml): 1.23.x uses Go 1.26.
-  The Go version used is recorded in each binary (`go version -m`).
-- skopeo is built with cgo and linked statically against musl, with
-  [zig](https://ziglang.org) as C compiler for both architectures, pinned in
-  [`.github/actions/setup`](.github/actions/setup/action.yaml). cgo is needed for
-  rootless `containers-storage:`: containers/storage enters the user namespace from a C
-  constructor (`pkg/unshare`). Before 1.16 that code calls `basename()` without
-  including `libgen.h`, which musl 1.2.4 requires, so for those releases
-  [`hack/musl-compat.h`](hack/musl-compat.h) is included into every C file.
-- The image is built by [`hack/build-image.sh`](hack/build-image.sh) from the binaries
-  goreleaser built (or, for rebuilds, the released archives) and `packaging/image/`,
-  with Docker buildx for both architectures, then signed with cosign. The same script
-  builds the image for the tests, so the image build is exercised on every pull request.
-- Build tags leave out what needs shared C libraries: `containers_image_openpgp`
-  (pure-Go OpenPGP instead of gpgme), `exclude_graphdriver_btrfs` and
-  `exclude_graphdriver_devicemapper` (needed up to 1.15).
-- The upstream commit is passed with `-X main.gitCommit`, as upstream's Makefile does.
-  From 1.21 on skopeo reads it from Go's VCS build info instead, which a module-proxy
-  build lacks, so `skopeo --version` shows no commit there.
-- The release is signed keyless with cosign through GitHub OIDC: the checksum file
-  (`checksums.txt.sigstore.json`) and the images. A GitHub build provenance
-  attestation is created for every file in `checksums.txt`.
+change: weekly for the newest release of every minor, and after changes to the image
+definition. A rebuild takes the released archives, checks them against the
+cosign-signed `checksums.txt` and builds the image with the current `Dockerfile`, so the
+images always contain exactly the released binaries. It updates every tag of that
+release except `vX.Y.Z-immutable`, which keeps the digest of the original release.
 
 ## Verify a binary
 
@@ -333,41 +266,12 @@ GITHUB_REPOSITORY_OWNER=podman-container-tools-community GITHUB_REPOSITORY=podma
   goreleaser release --config .build/.goreleaser.yaml --clean --skip=publish,sign,sbom
 ```
 
-Needs Go, goreleaser and the zig release pinned in
-[`.github/actions/setup`](.github/actions/setup/action.yaml) (`CC` is set in
-`.goreleaser.yaml`). With the same Go version (see `go version -m`) and zig version,
-the binaries are bit-for-bit identical.
+With the same Go version (see `go version -m`) and the zig version from
+[`mise.toml`](mise.toml) at the release tag, the binaries are bit-for-bit identical.
+How to run the tests is described in [`AGENTS.md`](AGENTS.md).
 
-The tests take bats-core from [mise](https://mise.jdx.dev), pinned in `.build/mise.lock`:
+## Contributing
 
-```sh
-mise exec -C .build -- hack/functional-test.sh ../dist/skopeo_linux_amd64_v1/skopeo localhost:5000
-```
-
-## Layout
-
-This repository is checked out to `.build/` inside an upstream checkout.
-
-```
-.goreleaser.yaml                     build, archive, package and signing configuration
-Dockerfile                           image on Alpine; packages cross-installed with apk, no emulation
-hack/upstream-releases.sh            upstream releases to build
-hack/build-sysroot.sh                C headers for the static build (here only musl-compat.h)
-hack/musl-compat.h                   declares basename() for releases before 1.16
-hack/build-image.sh                  builds, pushes and signs the image from built or released binaries
-hack/functional-test.sh              run test/functional.bats against a built binary
-hack/image-test.sh                   build the image from a dist directory, run test/image.bats
-test/functional.bats                 functional tests for the binary
-test/image.bats                      tests for the image
-.github/actions/setup/               hide .build/ from Git, install Go and the mise tools, build the sysroot
-.github/workflows/test.yaml          build one release, run functional and image tests
-.github/workflows/ci.yaml            pull requests: test.yaml for newest release per minor
-.github/workflows/sync.yaml          schedule and main: tag new releases, dispatch release.yaml
-.github/workflows/release.yaml       dispatch on a tag: test.yaml, then release, images, signing
-.github/workflows/rebuild.yaml       weekly and on image changes: rebuild images from released binaries
-packaging/gpg.asc                    public GPG key for packages and the apt repository
-packaging/apt/skopeo.sources         apt source for the latest release
-packaging/image/                     storage.conf and policy.json for the image
-renovate.json                        base image, action and mise tool updates
-mise.toml, mise.lock                 zig, goreleaser, syft, cosign and bats, installed with mise
-```
+How the build works, how to run the tests and the release workflows are described in
+[`AGENTS.md`](AGENTS.md), for people and coding agents alike. See also the
+[contributing guide](https://github.com/podman-container-tools-community/.github/blob/main/CONTRIBUTING.md).
