@@ -31,8 +31,10 @@ touch /marker
 # inside a container. fuse-overlayfs: overlay mount program
 # (packaging/image/storage.conf). shadow-subids: newuidmap and newgidmap for rootless
 # storage. ca-certificates: update-ca-certificates for CI jobs that add their own CA.
+# bash: CI jobs that run their scripts in the image expect it, as in upstream's Fedora
+# image and our buildah and podman images.
 apk --root /rootfs --arch "${arch}" --no-cache --no-scripts add \
-  fuse-overlayfs shadow-subids ca-certificates
+  fuse-overlayfs shadow-subids ca-certificates bash
 
 # Unprivileged user with subordinate ID ranges, as in upstream's image.
 echo 'skopeo:x:1000:1000:skopeo:/home/skopeo:/bin/sh' >> /rootfs/etc/passwd

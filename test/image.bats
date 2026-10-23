@@ -102,6 +102,11 @@ sh_in_image() {
   sh_in_image -- 'command -v update-ca-certificates'
 }
 
+@test "bash is available for CI scripts" {
+  run -0 --separate-stderr sh_in_image -- 'bash --version'
+  [[ "${output}" == 'GNU bash, version '* ]]
+}
+
 @test "copy to containers-storage as root uses fuse-overlayfs" {
   sh_in_image --privileged -- '
     grep -q "mount_program = \"/usr/bin/fuse-overlayfs\"" /etc/containers/storage.conf
