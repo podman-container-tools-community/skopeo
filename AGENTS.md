@@ -2,7 +2,8 @@
 
 Notes for maintainers and coding agents working on this repository.
 [`README.md`](README.md) is for users: install, image, verification and limitations.
-This file covers how the build works, how to test changes and the rules for changing
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is the short guide for people contributing: issues,
+pull requests and what reviewers expect. This file covers how the build works, how to test changes and the rules for changing
 the repository.
 
 ## What this repository is
@@ -17,8 +18,8 @@ the repository.
   [buildah](https://github.com/podman-container-tools-community/buildah) and
   [podman](https://github.com/podman-container-tools-community/podman). The org's
   [`.github`](https://github.com/podman-container-tools-community/.github) repository
-  holds the shared community health files (issue templates, contributing guide,
-  security policy).
+  holds the shared community health files (issue templates, code of conduct, security
+  policy); each repository has its own `CONTRIBUTING.md`.
 
 ## Layout
 
@@ -239,4 +240,6 @@ Conventions:
   must keep running on `main` only, and images are signed only inside `images.yaml`; a
   signature from another ref or file changes what users have to accept when verifying.
 - Pull requests that only change Markdown build nothing (`ci.yaml` skips `test`).
-- Keep `README.md` user-facing. Build internals, tests, workflows and rules belong here.
+- Keep `README.md` user-facing and `CONTRIBUTING.md` short and written for people
+  contributing; link here instead of repeating details. Build internals, tests,
+  workflows and rules belong here.

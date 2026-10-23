@@ -285,6 +285,7 @@ How to run the tests is described in [`AGENTS.md`](AGENTS.md).
 
 ## Contributing
 
-How the build works, how to run the tests and the release workflows are described in
-[`AGENTS.md`](AGENTS.md), for people and coding agents alike. See also the
-[contributing guide](https://github.com/podman-container-tools-community/.github/blob/main/CONTRIBUTING.md).
+Bug reports and pull requests are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) explains
+how to report a problem, what changes we accept and how to propose one. How the build
+works, how to run the tests and the release workflows are described in
+[`AGENTS.md`](AGENTS.md).
