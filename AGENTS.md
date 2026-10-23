@@ -166,23 +166,26 @@ Conventions:
   with the version as input, newest first, at most `MAX_RELEASES_PER_RUN` per run
   (repository variable, default 10). Only a 404 counts as "no release" or "no tag"; any
   other API error stops the run, so a flaky API never starts a second release.
-- `release.yaml` runs on `main` only (it fails on any other ref) and takes the upstream
-  tag as `version` input, so every release is built by the current pipeline and signed
-  as `release.yaml@refs/heads/main`. The release's tag never moves and carries no
-  pipeline state; the pipeline commit is in the release notes (`PIPELINE_COMMIT`).
-  It runs `test.yaml` first, then creates the draft release with binaries, packages,
-  apt repository, signatures and attestations, calls `images.yaml` for the images on
-  `ghcr.io` and publishes the release only when those are pushed. Image tags: `vX.Y.Z` and
-  `vX.Y.Z-immutable` always, `vX.Y` for the newest release of a minor, `vX` and `latest`
-  for the newest upstream release by version. `vX.Y.Z-immutable` is pushed only by the
-  release itself and never moves; a retried run keeps the first run's tag and signs its
-  digest too, in case the first run failed between push and signing.
+- `release.yaml` runs on `main` only (it fails on any other ref, before the build) and
+  takes the upstream tag as `version` input, so every release is built by the current
+  pipeline and signed as `release.yaml@refs/heads/main`. The release's tag never moves
+  and carries no pipeline state; the pipeline commit is in the release notes
+  (`PIPELINE_COMMIT`). It runs `test.yaml` first, then creates the draft release with
+  binaries, packages, apt repository, signatures and attestations, calls `images.yaml`
+  for the images on `ghcr.io` and publishes the release only when those are pushed.
+  Image tags: `vX.Y.Z` and `vX.Y.Z-immutable` always, `vX.Y` for the newest release of a
+  minor, `vX` and `latest` for the newest upstream release by version.
+  `vX.Y.Z-immutable` is pushed only by the release itself and never moves: it is a copy
+  of the signed manifest list, made after the signature, so a retried run finds a signed
+  tag and keeps it.
 - [`images.yaml`](.github/workflows/images.yaml) (`workflow_call`) builds, tests, pushes
   and signs the images of one release from its archives, verified against the
   cosign-signed `checksums.txt`, with the current `Dockerfile`. `release.yaml` calls it
   with `immutable: true` and the archives as an Actions artifact (the release is still a
   draft), then publishes the release; `rebuild.yaml` calls it per release. One caller
-  file means one signing identity for every image: `images.yaml@refs/heads/main`.
+  file means one signing identity for every image: `images.yaml@refs/heads/main`; it
+  fails when called on any other ref. The archives are downloaded by their exact names
+  and have to be listed in the verified `checksums.txt`.
 - [`rebuild.yaml`](.github/workflows/rebuild.yaml) rebuilds images without a new release:
   weekly for the newest release of every minor, after a merge to `main` that changes the
   `Dockerfile`, `packaging/image` or `hack/build-image.sh`, and on demand. It only lists
