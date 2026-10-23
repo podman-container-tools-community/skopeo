@@ -10,7 +10,7 @@ the repository.
 - Build configuration only, for community builds of upstream
   [skopeo](https://github.com/podman-container-tools/skopeo). Upstream source is never
   vendored, patched or copied in; it comes from the Go module proxy at the upstream tag
-  (see "Trust model" in the README). A change that would alter what gets compiled does
+  (see "Trust model" in `README.md`). A change that would alter what gets compiled does
   not belong here.
 - One of three sibling repositories built the same way:
   [skopeo](https://github.com/podman-container-tools-community/skopeo),
@@ -102,7 +102,7 @@ cosign and bats with their download checksums. Go is not in mise, because its ve
 depends on the release being built. Run the `hack/` scripts with mise activated or
 through `mise exec --`.
 
-Build a release as described in "Reproduce locally" in the README. Then, from the
+Build a release as described in "Reproduce locally" in `README.md`. Then, from the
 upstream checkout:
 
 ```sh
@@ -142,7 +142,7 @@ Conventions:
   there is no bats-assert.
 - Use `run --separate-stderr` when the output is parsed (jq, `expect_output`):
   containers/storage logs warnings to stderr on some kernels.
-- The images have BusyBox `sh` only, no bash: commands inside the image run with
+- The images have BusyBox `sh` only, no Bash: commands inside the image run with
   `sh -c`.
 - Tests run on amd64 only, inside the single `build` job of `test.yaml`. arm64 is built
   and checked to be static, but not tested; do not add arm64 or separate test jobs. New
@@ -193,7 +193,7 @@ Conventions:
 
 - Work through pull requests; never push to `main`. Sign off every commit
   (`git commit -s`) for the DCO.
-- Keep skopeo, buildah and podman equal: same file names, workflow and step structure,
+- Keep skopeo, buildah and podman equal: same filenames, workflow and step structure,
   script interfaces and wording, differing only where the tool needs it. A change to
   one repository is ported to the other two, one pull request per repository. Each
   repository stays self-contained: no reusable workflows, composite actions or
@@ -208,7 +208,7 @@ Conventions:
   with a 7-day minimum release age and automerges everything but major updates.
 - Runners are `ubuntu-26.04`. zig is pinned in `mise.toml`; the Go version comes from
   the setup action, and an exception there needs a comment with the error it avoids.
-- The image is Alpine with BusyBox `sh`; do not add bash. The binary has no GPG
+- The image is Alpine with BusyBox `sh`; do not add Bash. The binary has no GPG
   signing (verification works), no libsubid and no NSS; these are accepted limitations
-  of a static musl build and documented in the README.
-- Keep README.md user-facing. Build internals, tests, workflows and rules belong here.
+  of a static musl build and documented in `README.md`.
+- Keep `README.md` user-facing. Build internals, tests, workflows and rules belong here.
