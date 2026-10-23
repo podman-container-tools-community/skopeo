@@ -37,6 +37,13 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
     steps:
+      # The signing identity is this file at refs/heads/main: github.ref is the caller's ref.
+      - name: Check ref
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::images.yaml signs as images.yaml@refs/heads/main and must be called on main, not ${GITHUB_REF}"
+          exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -56,13 +63,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Exact names: a stray asset must not come along with the signed files.
       - name: Download the release
         if: inputs.artifact == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          name="${GITHUB_REPOSITORY#*/}"
           gh release download "${VERSION}" --repo "${GITHUB_REPOSITORY}" --dir release \
-            --pattern 'checksums.txt*' --pattern '*_linux_amd64.tar.gz' --pattern '*_linux_arm64.tar.gz'
+            --pattern checksums.txt --pattern checksums.txt.sigstore.json \
+            --pattern "${name}_${VERSION#v}_linux_amd64.tar.gz" --pattern "${name}_${VERSION#v}_linux_arm64.tar.gz"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: inputs.artifact != ''

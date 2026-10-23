@@ -3,6 +3,7 @@
 # archives (hack/build-image.sh --load) and runs
 # test/image.bats against it:
 #   hack/image-test.sh <dist dir|release dir>
+# A release dir needs VERSION, the release's tag, to pick its archives.
 # Needs Docker with buildx, jq, bats from mise.toml on PATH (mise install) and network
 # access to quay.io, Docker Hub and dl-cdn.alpinelinux.org.
 set -euo pipefail

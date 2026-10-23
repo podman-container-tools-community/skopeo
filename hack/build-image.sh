@@ -7,11 +7,11 @@
 # The build context is linux/<arch>/<binary> plus packaging/image/. Every architecture
 # found is built (no emulation needed); --load loads the host's as <local tag>.
 # --push pushes all of them to <image> with the tags for VERSION: vX.Y.Z, vX.Y if
-# IS_LATEST_MINOR=true, vX and latest if IS_LATEST=true, and vX.Y.Z-immutable if
-# IMMUTABLE=true (only the release pushes that one, and only if it does not exist yet),
-# then signs the manifest list
-# with cosign (keyless). VERSION, REVISION (the upstream commit) and CREATED (its date,
-# RFC 3339) are set by the workflows.
+# IS_LATEST_MINOR=true, vX and latest if IS_LATEST=true, then signs the manifest list with
+# cosign (keyless). With IMMUTABLE=true (the release only) the signed manifest list also
+# gets the tag vX.Y.Z-immutable, unless that tag exists already. VERSION (also needed to
+# pick the archives of a <release dir>), REVISION (the upstream commit) and CREATED (its
+# date, RFC 3339) are set by the workflows.
 # Needs Docker with buildx (a docker-container builder for --push), jq and, for --push,
 # cosign and a login to the registry.
 set -euo pipefail
@@ -41,8 +41,17 @@ for arch in amd64 arm64; do
       [[ ! -f "${built[0]}" ]] || cp "${built[0]}" "${dir}/"
     done
   else
-    archive=("${src}/${NAME}_"*"_linux_${arch}.tar.gz")
-    [[ ! -f "${archive[0]}" ]] || tar -xzf "${archive[0]}" -C "${dir}" "${BINARIES[@]}"
+    # The release's archive by its exact name, and only if the checksums.txt next to it
+    # (verified by images.yaml) lists it: an extra asset must not get in.
+    : "${VERSION:?needed to pick the archives}"
+    archive="${NAME}_${VERSION#v}_linux_${arch}.tar.gz"
+    if [[ -f "${src}/${archive}" ]]; then
+      if ! grep -q "  ${archive}$" "${src}/checksums.txt"; then
+        echo "${archive} is not listed in ${src}/checksums.txt" >&2
+        exit 1
+      fi
+      tar -xzf "${src}/${archive}" -C "${dir}" "${BINARIES[@]}"
+    fi
   fi
   if [[ "$(find "${dir}" -type f | wc -l)" -eq "${#BINARIES[@]}" ]]; then
     platforms+=("linux/${arch}")
@@ -74,21 +83,6 @@ case "${mode}" in
 --push)
   : "${VERSION:?}" "${REVISION:?}" "${CREATED:?}"
   tags=("${VERSION}")
-  # The -immutable tag is pushed once: a retried release must not move it.
-  immutable=""
-  if [[ "${IMMUTABLE:-false}" == true ]]; then
-    if immutable="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "${target}:${VERSION}-immutable" 2>&1)"; then
-      echo "::notice::${target}:${VERSION}-immutable exists already (${immutable}) and is kept" >&2
-    elif grep -qiE 'not found|MANIFEST_UNKNOWN|NAME_UNKNOWN' <<<"${immutable}"; then
-      immutable=""
-      tags+=("${VERSION}-immutable")
-    else
-      # Any other error (registry, login, network) must not end in a second push.
-      echo "${immutable}" >&2
-      echo "::error::cannot tell whether ${target}:${VERSION}-immutable exists" >&2
-      exit 1
-    fi
-  fi
   [[ "${IS_LATEST_MINOR:-false}" != true ]] || tags+=("${VERSION%.*}")
   [[ "${IS_LATEST:-false}" != true ]] || tags+=("${VERSION%%.*}" latest)
   # The pinned base image, for the base.* annotations.
@@ -120,10 +114,22 @@ case "${mode}" in
   build --push "${args[@]}"
   digest="$(jq -r '."containerimage.digest"' "${work}/metadata.json")"
   cosign sign --yes "${target}@${digest}"
-  # A kept -immutable digest from a run that failed between push and signing gets its
-  # signature now; signing a signed digest again only adds a signature.
-  if [[ -n "${immutable}" && "${immutable}" != "${digest}" ]]; then
-    cosign sign --yes "${target}@${immutable}"
+  # The -immutable tag is a copy of the manifest list just signed (same digest), made
+  # only after the signature, so an existing one was always signed by this script. It is
+  # pushed once: a retried release keeps it. The registry's repository exists at this
+  # point, so "not found" is the only answer for a missing tag.
+  if [[ "${IMMUTABLE:-false}" == true ]]; then
+    immutable="${target}:${VERSION}-immutable"
+    if existing="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "${immutable}" 2>&1)"; then
+      echo "::notice::${immutable} exists already (${existing}) and is kept" >&2
+    elif grep -qiE 'not found|MANIFEST_UNKNOWN' <<<"${existing}"; then
+      docker buildx imagetools create -t "${immutable}" "${target}@${digest}"
+    else
+      # Any other error (registry, login, network) must not end in a second push.
+      echo "${existing}" >&2
+      echo "::error::cannot tell whether ${immutable} exists" >&2
+      exit 1
+    fi
   fi
   echo "${target}@${digest}"
   ;;

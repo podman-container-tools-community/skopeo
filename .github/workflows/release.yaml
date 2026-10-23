@@ -30,21 +30,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test:
-    uses: ./.github/workflows/test.yaml
-    with:
-      version: ${{ inputs.version }}
-
-  release:
-    needs: test
+  # Before the long build: the ref, for the signing identity, and the release's tag.
+  check:
     runs-on: ubuntu-26.04
-    name: release (${{ inputs.version }})
-    permissions:
-      contents: write # GitHub release
-      id-token: write # cosign keyless signing and attestations
-      attestations: write
-    outputs:
-      latest: ${{ steps.floating.outputs.latest }}
     env:
       VERSION: ${{ inputs.version }}
     steps:
@@ -64,6 +52,25 @@ jobs:
             exit 1
           fi
 
+  test:
+    needs: check
+    uses: ./.github/workflows/test.yaml
+    with:
+      version: ${{ inputs.version }}
+
+  release:
+    needs: test
+    runs-on: ubuntu-26.04
+    name: release (${{ inputs.version }})
+    permissions:
+      contents: write # GitHub release
+      id-token: write # cosign keyless signing and attestations
+      attestations: write
+    outputs:
+      latest: ${{ steps.floating.outputs.latest }}
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: podman-container-tools/skopeo
@@ -145,10 +152,12 @@ jobs:
           subject-checksums: dist/checksums.txt
 
       # The archives for images.yaml: the release is still a draft, whose assets a job
-      # with contents: read cannot download.
+      # with contents: read cannot download. overwrite: a re-run of this job in the same
+      # workflow run uploads the name again.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ inputs.version }}
+          overwrite: true
           path: |
             dist/checksums.txt
             dist/checksums.txt.sigstore.json
