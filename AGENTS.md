@@ -63,6 +63,10 @@ mise.toml, mise.lock                 zig, goreleaser, syft, cosign and bats, ins
   changed from `github.com/containers/skopeo` to `go.podman.io/skopeo` in 1.23; both work.
   A release whose `go.mod` has `replace` directives is built from the checkout instead
   (`proxy: false`, picked by the setup action), because the module proxy ignores them.
+- Before goreleaser runs, the setup action downloads the modules with `go mod download`
+  and retries it up to five times, because proxy.golang.org sometimes cuts a download off
+  and neither go build nor goreleaser (which retries only its `go get`, on a 404) retries
+  that. goreleaser then finds the modules in the module cache.
 - Every release is built with the newest stable Go, not the version in upstream's
   `go.mod` (only a minimum, and end-of-life for older releases: `go 1.19` for 1.14.x),
   with `GOTOOLCHAIN=local`. Exceptions for releases whose pinned dependencies break with
