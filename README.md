@@ -105,8 +105,8 @@ own `~/.config/containers/storage.conf`). Any other uid takes `graphroot` from
 `/etc/containers/storage.conf`, which only root can write, as in upstream's image: give it
 its own `storage.conf` via `CONTAINERS_STORAGE_CONF` for rootless storage.
 
-Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (with `bash` installed,
-BusyBox for the rest), `linux/amd64` and `linux/arm64` only, no GPG signing (see
+Differences from `quay.io/skopeo/stable`: Alpine instead of Fedora (BusyBox `sh`, no
+`bash`), `linux/amd64` and `linux/arm64` only, no GPG signing (see
 [Limitations](#limitations)), and only `vX.Y.Z-immutable` as immutable tag. Upstream also
 has `vX-immutable` and `vX.Y-immutable`, but those are pushed once and therefore stay at
 the first release of that line. `vX.Y.Z` can be rebuilt on a newer base image, weekly
