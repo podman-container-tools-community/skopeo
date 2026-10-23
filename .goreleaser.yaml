@@ -157,6 +157,7 @@ release:
   header: |
     Community-maintained static build of [skopeo {{ .Tag }}](https://github.com/podman-container-tools/skopeo/releases/tag/{{ .Tag }}).
     Not an official release of the skopeo project.
+    Built by the pipeline at [{{ envOrDefault "GITHUB_REPOSITORY" "podman-container-tools-community/skopeo" }}@{{ envOrDefault "PIPELINE_COMMIT" "main" }}](https://github.com/{{ envOrDefault "GITHUB_REPOSITORY" "podman-container-tools-community/skopeo" }}/commit/{{ envOrDefault "PIPELINE_COMMIT" "main" }}); the release's Git tag only anchors the release.
 
     Built with cgo, linked statically against musl (zig), with tags `containers_image_openpgp exclude_graphdriver_btrfs exclude_graphdriver_devicemapper`.
     Known limitations: no GPG signing (`--sign-by`, `standalone-sign`; GPG verification and sigstore work), no btrfs driver, no libsubid, no NSS.

@@ -1,7 +1,9 @@
 name: ci
 
 # Builds and tests the newest upstream release of every minor version without
-# publishing anything.
+# publishing anything. A pull request that only changes Markdown (README.md, AGENTS.md)
+# builds nothing: the test job is skipped, and so is the fail gate, which counts as
+# passed. The workflow still runs for the required check, unlike a paths filter.
 
 on:
   pull_request:
@@ -18,10 +20,25 @@ jobs:
     runs-on: ubuntu-26.04
     outputs:
       versions: ${{ steps.versions.outputs.versions }}
+      build: ${{ steps.changes.outputs.build }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          files="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --paginate --jq '.[].filename')"
+          if grep -qvE '\.md$' <<<"${files}"; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::only Markdown changed, nothing to build"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # Newest release per minor, e.g. ["v1.11.5", ..., "v1.24.1"]
       - id: versions
@@ -38,6 +55,7 @@ jobs:
 
   test:
     needs: versions
+    if: needs.versions.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
