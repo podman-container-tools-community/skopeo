@@ -211,4 +211,10 @@ Conventions:
 - The image is Alpine with BusyBox `sh`; do not add Bash. The binary has no GPG
   signing (verification works), no libsubid and no NSS; these are accepted limitations
   of a static musl build and documented in `README.md`.
+- Known limitation, by design: the apt repository lives in the GitHub release that
+  `latest` points to (`releases/latest/download`), so `.deb` URLs from a cached index
+  return 404 after a new release until `apt update` runs. A rolling package-pool
+  release that keeps older packages was considered and not chosen; don't add one
+  without the maintainer's decision. It is documented under "Limitations" in
+  `README.md`.
 - Keep `README.md` user-facing. Build internals, tests, workflows and rules belong here.

@@ -246,6 +246,11 @@ means:
   link time like upstream does (`-X main.gitCommit`). Newer releases read it from Go's
   VCS build info, which a module-proxy build does not have; `go version -m` shows the
   exact module version and hash instead.
+- **The apt repository serves only the newest release.** Its sources point at
+  `releases/latest/download`, so once a new upstream release is published, the `.deb`
+  URLs in a cached index return 404 until `sudo apt update` runs (see
+  [apt](#apt-debian-ubuntu)). This is by design; there is no package pool with older
+  releases.
 - **Linux only**, `amd64` and `arm64`.
 
 ## Reproduce locally
