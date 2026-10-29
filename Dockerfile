@@ -66,6 +66,8 @@ ARG TARGETPLATFORM
 COPY --from=delta /delta/ /
 COPY packaging/image/storage.conf packaging/image/policy.json /etc/containers/
 COPY $TARGETPLATFORM/skopeo /usr/bin/skopeo
+# The C libraries in skopeo, for the image SBOM (hack/generate-sbom.sh)
+COPY sbom/$TARGETPLATFORM/ /usr/share/sbom/skopeo/
 # Same default as upstream's image. Without it the credentials file defaults to
 # /run/containers/UID/auth.json, which only root can create, so skopeo login fails for
 # any other user (Kubernetes runAsUser, docker run --user).

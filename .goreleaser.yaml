@@ -23,6 +23,10 @@ gomod:
     - GOSUMDB=sum.golang.org
     - GOFLAGS=-mod=mod
 
+before:
+  hooks:
+    - .build/hack/generate-sbom.sh .build/generated/static-libraries.spdx.json
+
 builds:
   # skopeo needs cgo for rootless containers-storage: containers/storage enters the user
   # namespace from a C constructor (pkg/unshare); without it skopeo re-executes itself
@@ -78,6 +82,9 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - src: default-policy.json
+      # C libraries in skopeo, for the SBOMs (hack/generate-sbom.sh)
+      - src: .build/generated/static-libraries.spdx.json
+        strip_parent: true
   - id: binary
     formats: [binary]
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
@@ -131,8 +138,11 @@ nfpms:
 checksum:
   name_template: checksums.txt
 
+# goreleaser's default syft arguments plus the sbom-cataloger, which merges the
+# archive's static-libraries.spdx.json: syft cannot see the C libraries in the binary.
 sboms:
   - artifacts: archive
+    args: ["$artifact", "--output", "spdx-json=$document", "--enrich", "all", "--select-catalogers", "+sbom-cataloger"]
 
 signs:
   - cmd: cosign

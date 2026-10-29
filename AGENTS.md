@@ -31,6 +31,7 @@ Dockerfile                           image on Alpine; packages cross-installed w
 hack/upstream-releases.sh            upstream releases to build
 hack/build-sysroot.sh                C headers for the static build (here only musl-compat.h)
 hack/musl-compat.h                   declares basename() for releases before 1.16
+hack/generate-sbom.sh                SPDX file for the C libraries in skopeo, merged into the archive and image SBOMs
 hack/build-image.sh                  builds, pushes and signs the image from built or released binaries
 hack/functional-test.sh              runs test/functional.bats and test/signing.bats against a built binary
 hack/image-test.sh                   builds the image from a dist directory, runs test/image.bats
@@ -99,6 +100,15 @@ mise.toml, mise.lock                 zig, goreleaser, syft, cosign and bats, ins
   (`checksums.txt.sigstore.json`) and the images. A GitHub build provenance attestation
   is created for every file in `checksums.txt`. The apt repository and rpm packages are
   also signed with the GPG key from the repository secrets.
+- SBOMs: goreleaser runs syft on every archive (`<archive>.sbom.json`), and
+  `hack/build-image.sh` builds the image with `--sbom=true` (BuildKit's syft scanner).
+  syft sees the Go modules but not the C code linked into `skopeo`, so
+  [`hack/generate-sbom.sh`](hack/generate-sbom.sh) (a goreleaser before hook) writes
+  `static-libraries.spdx.json` with musl (from zig) and SQLite (bundled by go-sqlite3), reading each version from what the
+  build uses. It goes into the archive and into the image under `/usr/share/sbom/skopeo/`;
+  syft's sbom-cataloger merges it into both SBOMs (goreleaser needs `+sbom-cataloger`,
+  BuildKit's scanner enables it by default). Archives of earlier releases have none, so
+  their rebuilt images have none either.
 
 ## Build and test locally
 
