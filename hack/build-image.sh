@@ -10,9 +10,9 @@
 # the newest upstream release of its minor, vX and latest if it is the newest upstream
 # release (hack/upstream-releases.sh, asked right before the push), then signs the
 # manifest list with cosign (keyless). With IMMUTABLE=true (the release only) the signed
-# manifest list also gets the tag vX.Y.Z-immutable, unless that tag exists already. VERSION (also needed to
-# pick the archives of a <release dir>), REVISION (the upstream commit) and CREATED (its
-# date, RFC 3339) are set by the workflows.
+# manifest list also gets the tag vX.Y.Z-immutable, unless that tag exists already.
+# VERSION (also needed to pick the archives of a <release dir>), REVISION (the upstream
+# commit) and CREATED (its date, RFC 3339) are set by the workflows.
 # Needs Docker with buildx (a docker-container builder for --push), jq and, for --push,
 # cosign, the GitHub CLI (GH_TOKEN) and a login to the registry.
 set -euo pipefail
