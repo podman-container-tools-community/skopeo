@@ -46,6 +46,14 @@ sh_in_image() {
     "${IMAGE}" -euc "$@"
 }
 
+# hack/generate-sbom.sh; releases built before it have none.
+@test "SBOM of the static C libraries" {
+  run -0 --separate-stderr docker run --rm --entrypoint /bin/sh "${IMAGE}" -c \
+    'cat /usr/share/sbom/skopeo/static-libraries.spdx.json 2>/dev/null || echo none'
+  [[ "${output}" != none ]] || skip "release without static-libraries.spdx.json"
+  [[ "${output}" == *'"name": "musl"'* ]]
+}
+
 @test "skopeo is the entrypoint" {
   run -0 --separate-stderr in_image -- --version
   [[ "${output}" == "skopeo version "* ]]
