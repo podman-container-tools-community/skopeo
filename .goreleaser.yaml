@@ -11,7 +11,8 @@
 # (hack/build-sysroot.sh); zig is the C compiler, so both architectures build on one
 # runner. The image is built separately by hack/build-image.sh.
 # GPG_KEY_PATH names the GPG private key that signs the deb and rpm packages; unset
-# means unsigned. IS_LATEST=true marks upstream's latest release.
+# means unsigned. The release stays a draft: release.yaml's publish job publishes it and
+# decides whether it becomes GitHub's latest release.
 version: 2
 
 project_name: skopeo
@@ -138,8 +139,6 @@ nfpms:
 checksum:
   name_template: checksums.txt
 
-# goreleaser's default syft arguments plus the sbom-cataloger, which merges the
-# archive's static-libraries.spdx.json: syft cannot see the C libraries in the binary.
 sboms:
   - artifacts: archive
     args: ["$artifact", "--output", "spdx-json=$document", "--enrich", "all", "--select-catalogers", "+sbom-cataloger"]
@@ -162,7 +161,7 @@ release:
   github:
     owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
     name: '{{ envOrDefault "GITHUB_REPOSITORY_NAME" .ProjectName }}'
-  make_latest: '{{ eq (envOrDefault "IS_LATEST" "false") "true" }}'
+  make_latest: "false"
   prerelease: auto
   header: |
     Community-maintained static build of [skopeo {{ .Tag }}](https://github.com/podman-container-tools/skopeo/releases/tag/{{ .Tag }}).

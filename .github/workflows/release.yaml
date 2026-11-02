@@ -66,8 +66,6 @@ jobs:
       contents: write # GitHub release
       id-token: write # cosign keyless signing and attestations
       attestations: write
-    outputs:
-      latest: ${{ steps.floating.outputs.latest }}
     env:
       VERSION: ${{ inputs.version }}
     steps:
@@ -85,21 +83,6 @@ jobs:
       - uses: ./.build/.github/actions/setup
         with:
           version: ${{ inputs.version }}
-
-      # latest and vX follow the newest upstream release by version, not upstream's
-      # GitHub "latest" flag: that flag moves to a backport release of an older minor
-      # unless upstream resets it, and with it make_latest and the apt repository.
-      - name: Check floating tags
-        id: floating
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -o pipefail
-          releases="$(.build/hack/upstream-releases.sh)"
-          latest="$(tail -1 <<<"${releases}")"
-          is_latest="$([[ "${VERSION}" == "${latest}" ]] && echo true || echo false)"
-          echo "IS_LATEST=${is_latest}" >> "$GITHUB_ENV"
-          echo "latest=${is_latest}" >> "$GITHUB_OUTPUT"
 
       # Key for the deb/rpm signatures and the apt repository (packaging/gpg.asc).
       - name: Import GPG key
@@ -191,8 +174,22 @@ jobs:
       contents: write # publish the release
     env:
       VERSION: ${{ inputs.version }}
-      IS_LATEST: ${{ needs.release.outputs.latest }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: hack/upstream-releases.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      # GitHub's latest release (and with it the apt repository) follows the newest
+      # upstream release by version, not upstream's GitHub "latest" flag: that flag moves
+      # to a backport release of an older minor unless upstream resets it. Asked here,
+      # right before publishing, not when the run starts: a run still going when upstream
+      # releases a newer version must not take latest back.
       - name: Publish release
-        run: gh release edit "${VERSION}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest="${IS_LATEST}"
+        run: |
+          set -o pipefail
+          latest="$(hack/upstream-releases.sh | tail -1)"
+          gh release edit "${VERSION}" --repo "${GITHUB_REPOSITORY}" --draft=false \
+            --latest="$([[ "${VERSION}" == "${latest}" ]] && echo true || echo false)"

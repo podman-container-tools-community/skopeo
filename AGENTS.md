@@ -100,6 +100,7 @@ mise.toml, mise.lock                 zig, goreleaser, syft, cosign and bats, ins
   (`checksums.txt.sigstore.json`) and the images. A GitHub build provenance attestation
   is created for every file in `checksums.txt`. The apt repository and rpm packages are
   also signed with the GPG key from the repository secrets.
+
 - SBOMs: goreleaser runs syft on every archive (`<archive>.sbom.json`), and
   `hack/build-image.sh` builds the image with `--sbom=true` (BuildKit's syft scanner).
   syft sees the Go modules but not the C code linked into `skopeo`, so
@@ -189,7 +190,11 @@ Conventions:
   binaries, packages, apt repository, signatures and attestations, calls `images.yaml`
   for the images on `ghcr.io` and publishes the release only when those are pushed.
   Image tags: `vX.Y.Z` and `vX.Y.Z-immutable` always, `vX.Y` for the newest release of a
-  minor, `vX` and `latest` for the newest upstream release by version.
+  minor, `vX` and `latest` for the newest upstream release by version. The same rule
+  makes a release GitHub's latest (and with it the apt repository's). Both are decided
+  right before they are applied (`hack/build-image.sh` before the push, the `publish`
+  job before publishing), never at the start of a run: a run still going when upstream
+  releases a newer version must not move them back to its own.
   `vX.Y.Z-immutable` is pushed only by the release itself and never moves: it is a copy
   of the signed manifest list, made after the signature, so a retried run finds a signed
   tag and keeps it.
