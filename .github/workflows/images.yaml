@@ -96,23 +96,6 @@ jobs:
             echo "CREATED=$(jq -r .commit.committer.date <<< "${commit}")"
           } >> "$GITHUB_ENV"
 
-      # Floating tags: latest and vX follow the newest upstream release, vX.Y the newest
-      # release of that minor. The newest by version, not upstream's GitHub "latest"
-      # flag: that flag moves to a backport release of an older minor unless upstream
-      # resets it.
-      - name: Check floating tags
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -o pipefail
-          releases="$(hack/upstream-releases.sh)"
-          latest="$(tail -1 <<<"${releases}")"
-          latest_minor="$(grep -F "${VERSION%.*}." <<<"${releases}" | tail -1)"
-          {
-            echo "IS_LATEST=$([[ "${VERSION}" == "${latest}" ]] && echo true || echo false)"
-            echo "IS_LATEST_MINOR=$([[ "${VERSION}" == "${latest_minor}" ]] && echo true || echo false)"
-          } >> "$GITHUB_ENV"
-
       # Ubuntu 26.04, like 24.04, denies unprivileged user namespaces to unconfined
       # processes, which the rootless tests need.
       - name: Allow user namespaces
@@ -122,7 +105,9 @@ jobs:
       - name: Test the image
         run: hack/image-test.sh release
 
+      # Also picks the floating tags (latest, vX, vX.Y), right before the push.
       - name: Push and sign images
         env:
+          GH_TOKEN: ${{ github.token }}
           IMMUTABLE: ${{ inputs.immutable }}
         run: hack/build-image.sh --push release "ghcr.io/${GITHUB_REPOSITORY}"

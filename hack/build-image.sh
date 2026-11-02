@@ -6,14 +6,15 @@
 # holds a release's <name>_<version>_linux_<arch>.tar.gz archives instead (rebuild.yaml).
 # The build context is linux/<arch>/<binary> plus packaging/image/. Every architecture
 # found is built (no emulation needed); --load loads the host's as <local tag>.
-# --push pushes all of them to <image> with the tags for VERSION: vX.Y.Z, vX.Y if
-# IS_LATEST_MINOR=true, vX and latest if IS_LATEST=true, then signs the manifest list with
-# cosign (keyless). With IMMUTABLE=true (the release only) the signed manifest list also
-# gets the tag vX.Y.Z-immutable, unless that tag exists already. VERSION (also needed to
-# pick the archives of a <release dir>), REVISION (the upstream commit) and CREATED (its
-# date, RFC 3339) are set by the workflows.
+# --push pushes all of them to <image> with the tags for VERSION: vX.Y.Z, vX.Y if it is
+# the newest upstream release of its minor, vX and latest if it is the newest upstream
+# release (hack/upstream-releases.sh, asked right before the push), then signs the
+# manifest list with cosign (keyless). With IMMUTABLE=true (the release only) the signed
+# manifest list also gets the tag vX.Y.Z-immutable, unless that tag exists already.
+# VERSION (also needed to pick the archives of a <release dir>), REVISION (the upstream
+# commit) and CREATED (its date, RFC 3339) are set by the workflows.
 # Needs Docker with buildx (a docker-container builder for --push), jq and, for --push,
-# cosign and a login to the registry.
+# cosign, the GitHub CLI (GH_TOKEN) and a login to the registry.
 set -euo pipefail
 
 NAME=skopeo
@@ -85,9 +86,16 @@ case "${mode}" in
   ;;
 --push)
   : "${VERSION:?}" "${REVISION:?}" "${CREATED:?}"
+  # Floating tags: latest and vX follow the newest upstream release, vX.Y the newest
+  # release of that minor. The newest by version, not upstream's GitHub "latest" flag:
+  # that flag moves to a backport release of an older minor unless upstream resets it.
+  # Asked here, right before the push (a cache hit after the image test), not when the
+  # workflow starts: a run still going when upstream releases a newer version must not
+  # move these tags back to its own version.
+  releases="$("${repo}/hack/upstream-releases.sh")"
   tags=("${VERSION}")
-  [[ "${IS_LATEST_MINOR:-false}" != true ]] || tags+=("${VERSION%.*}")
-  [[ "${IS_LATEST:-false}" != true ]] || tags+=("${VERSION%%.*}" latest)
+  [[ "${VERSION}" != "$(grep -F "${VERSION%.*}." <<<"${releases}" | tail -1)" ]] || tags+=("${VERSION%.*}")
+  [[ "${VERSION}" != "$(tail -1 <<<"${releases}")" ]] || tags+=("${VERSION%%.*}" latest)
   # The pinned base image, for the base.* annotations.
   base="$(sed -n 's/^FROM \([^ ]*\) AS base$/\1/p' "${repo}/Dockerfile")"
   description="Community-built static ${NAME} ${VERSION} (upstream: github.com/${UPSTREAM})"
