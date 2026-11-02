@@ -19,6 +19,7 @@ set -euo pipefail
 
 NAME=skopeo
 BINARIES=(skopeo)
+SBOM=static-libraries.spdx.json
 UPSTREAM=podman-container-tools/skopeo
 
 mode="$1"
@@ -56,6 +57,15 @@ for arch in amd64 arm64; do
       exit 1
     fi
     tar -xzf "${src}/${archive}" -C "${dir}" "${BINARIES[@]}"
+  fi
+  # The C libraries in the binaries (hack/generate-sbom.sh), for BuildKit's SBOM scanner,
+  # which merges SPDX files it finds in the image. Releases before it have none.
+  sbom="${ctx}/sbom/linux/${arch}"
+  mkdir -p "${sbom}"
+  if [[ -f "${src}/metadata.json" ]]; then
+    [[ ! -f "${repo}/generated/${SBOM}" ]] || cp "${repo}/generated/${SBOM}" "${sbom}/"
+  elif tar -tzf "${src}/${archive}" | grep -x "${SBOM}" >/dev/null; then
+    tar -xzf "${src}/${archive}" -C "${sbom}" "${SBOM}"
   fi
   if [[ "$(find "${dir}" -type f | wc -l)" -eq "${#BINARIES[@]}" ]]; then
     platforms+=("linux/${arch}")
