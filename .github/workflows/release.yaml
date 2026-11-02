@@ -162,6 +162,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      attestations: write
     with:
       version: ${{ inputs.version }}
       immutable: true
