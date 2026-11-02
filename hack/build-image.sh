@@ -153,7 +153,7 @@ case "${mode}" in
     fi
   fi
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-    echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+    echo "digest=${digest}" >>"${GITHUB_OUTPUT}"
   fi
   echo "${target}@${digest}"
   ;;
