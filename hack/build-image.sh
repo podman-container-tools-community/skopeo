@@ -134,7 +134,20 @@ case "${mode}" in
   echo "+ pushing ${target} ${tags[*]} (${platforms[*]})" >&2
   build --push "${args[@]}"
   digest="$(jq -r '."containerimage.digest"' "${work}/metadata.json")"
-  cosign sign --yes "${target}@${digest}"
+  # The floating tags point at this digest already, so a transient registry error here
+  # (ghcr.io answers 503 now and then) would leave them unsigned until the next rebuild.
+  # Signing again is harmless: at worst the digest gets a second signature.
+  for attempt in 1 2 3 4 5; do
+    if cosign sign --yes "${target}@${digest}"; then
+      break
+    fi
+    if ((attempt == 5)); then
+      echo "::error::cannot sign ${target}@${digest} after ${attempt} attempts" >&2
+      exit 1
+    fi
+    echo "::warning::signing ${target}@${digest} failed (attempt ${attempt}), retrying" >&2
+    sleep $((attempt * 15))
+  done
   # The -immutable tag is a copy of the manifest list just signed (same digest), made
   # only after the signature, so an existing one was always signed by this script. It is
   # pushed once: a retried release keeps it. The registry's repository exists at this
