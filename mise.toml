@@ -7,5 +7,5 @@
 bats = "1.14.0"
 cosign = "3.1.4"
 goreleaser = "2.20.2"
-syft = "1.57.1"
+syft = "1.57.2"
 zig = "0.17.0"
